@@ -5,7 +5,8 @@
 // Définir les tailles maximales pour les noms, les chemins et les entrées utilisateur
 #define MAX_NOM 50
 #define MAX_INPUT 100
-#define MAX_CHEMIN 1000000  
+#define MAX_CHEMIN 1000  
+#define MORE_CHEMIN 100
 
 // Structure pour représenter un utilisateur
 typedef struct {
@@ -166,6 +167,7 @@ int connectionCompte(const char *nomFichier, const char *identifiant) {
         return 0;
     }
 }
+
 // Fonction pour afficher le chemin actuel
 void afficherCheminActuel() {
     if (idUtilisateurConnecte != -1)
@@ -181,9 +183,10 @@ void creerRepertoireUtilisateur(const char *nomFichier, const char *nomRepertoir
         return;
     }
 
-    char chemin[MAX_CHEMIN];
+    char chemin[MAX_CHEMIN+MORE_CHEMIN];
     // Construire le chemin du nouveau répertoire
-    snprintf(chemin, sizeof(chemin), "User/id%d_%s/%s/\n", idUtilisateurConnecte, ident, nomRepertoire);
+    //snprintf(chemin, sizeof(chemin), "User/id%d_%s/%s/\n", idUtilisateurConnecte, ident, nomRepertoire);
+    snprintf(chemin, sizeof(chemin), "%s%s/\n", cheminActuel, nomRepertoire);
 
     FILE *fichier = fopen(nomFichier, "ab");  // Ouvrir le fichier en mode ajout binaire
     if (!fichier) {
@@ -219,26 +222,42 @@ void listerRepertoiresFichiers(const char *nomFichier) {
     }
 
     char ligne[MAX_CHEMIN];
-    char cheminUtilisateur[MAX_CHEMIN];
-    // Construire le chemin de l'utilisateur connecté
-    snprintf(cheminUtilisateur, sizeof(cheminUtilisateur), "User/id%d_%s/", idUtilisateurConnecte, ident);
-
-    printf("\n📂 Contenu de votre espace (ID racine : %d) :\n", idUtilisateurConnecte); // Afficher l'ID du répertoire racine
-    printf("────────────────────────────────\n");
-
     int trouve = 0;
-    // Lire le fichier ligne par ligne et afficher les répertoires et fichiers
+
+    printf("\n📂 Contenu du répertoire '%s' :\n", cheminActuel);
+
+    // Parcourir le fichier ligne par ligne
     while (fgets(ligne, sizeof(ligne), fichier)) {
-        if (strncmp(ligne, cheminUtilisateur, strlen(cheminUtilisateur)) == 0) {
-            printf("📁 %s", ligne + strlen(cheminUtilisateur));  // Afficher le contenu
-            trouve = 1;
+        // Supprimer le saut de ligne
+        ligne[strcspn(ligne, "\n")] = '\0';
+
+        // Vérifier si la ligne commence par le chemin actuel
+        if (strncmp(ligne, cheminActuel, strlen(cheminActuel)) == 0) {
+            // Extraire le nom du répertoire ou fichier
+            char *nom = ligne + strlen(cheminActuel);
+
+            // Ignorer les lignes vides ou les chemins incorrects
+            if (strlen(nom) > 0) {
+                trouve = 1;
+
+                // Vérifier si c'est un répertoire (se termine par '/')
+                if (nom[strlen(nom) - 1] == '/') {
+                    printf("📁 %s\n", nom);  // Afficher le répertoire
+                } else {
+                    printf("📄 %s\n", nom);  // Afficher le fichier
+                }
+            }
         }
     }
 
     fclose(fichier);  // Fermer le fichier
-    if (!trouve) printf("📁 Aucun fichier ou dossier trouvé.\n");  // Afficher un message si aucun contenu n'est trouvé
+
+    if (!trouve) {
+        printf("📁 Aucun fichier ou dossier trouvé.\n");  // Afficher un message si aucun contenu n'est trouvé
+    }
 }
 
+// Fonction pour chnager de répertoire 
 void changerRepertoire(const char *nomDossier) {
     if (idUtilisateurConnecte == -1) {
         printf("⚠️ Veuillez vous connecter d'abord.\n");
