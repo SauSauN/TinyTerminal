@@ -221,26 +221,40 @@ void listerRepertoiresFichiers(const char *nomFichier) {
     }
 
     char ligne[MAX_CHEMIN];
-    char cheminUtilisateur[MAX_CHEMIN];
-    // Construire le chemin de l'utilisateur connecté
-    snprintf(cheminUtilisateur, sizeof(cheminUtilisateur), "User/id%d_%s/", idUtilisateurConnecte, ident);
-
-    printf("\n📂 Contenu de votre espace (ID racine : %d) :\n", idUtilisateurConnecte); // Afficher l'ID du répertoire racine
-    printf("────────────────────────────────\n");
-
     int trouve = 0;
-    // Lire le fichier ligne par ligne et afficher les répertoires et fichiers
+
+    printf("\n📂 Contenu du répertoire '%s' :\n", cheminActuel);
+
+    // Parcourir le fichier ligne par ligne
     while (fgets(ligne, sizeof(ligne), fichier)) {
-        if (strncmp(ligne, cheminUtilisateur, strlen(cheminUtilisateur)) == 0) {
-            printf("📁 %s", ligne + strlen(cheminUtilisateur));  // Afficher le contenu
-            trouve = 1;
+        // Supprimer le saut de ligne
+        ligne[strcspn(ligne, "\n")] = '\0';
+
+        // Vérifier si la ligne commence par le chemin actuel
+        if (strncmp(ligne, cheminActuel, strlen(cheminActuel)) == 0) {
+            // Extraire le nom du répertoire ou fichier
+            char *nom = ligne + strlen(cheminActuel);
+
+            // Ignorer les lignes vides ou les chemins incorrects
+            if (strlen(nom) > 0) {
+                trouve = 1;
+
+                // Vérifier si c'est un répertoire (se termine par '/')
+                if (nom[strlen(nom) - 1] == '/') {
+                    printf("📁 %s\n", nom);  // Afficher le répertoire
+                } else {
+                    printf("📄 %s\n", nom);  // Afficher le fichier
+                }
+            }
         }
     }
 
     fclose(fichier);  // Fermer le fichier
-    if (!trouve) printf("📁 Aucun fichier ou dossier trouvé.\n");  // Afficher un message si aucun contenu n'est trouvé
-}
 
+    if (!trouve) {
+        printf("📁 Aucun fichier ou dossier trouvé.\n");  // Afficher un message si aucun contenu n'est trouvé
+    }
+}
 void changerRepertoire(const char *nomDossier) {
     if (idUtilisateurConnecte == -1) {
         printf("⚠️ Veuillez vous connecter d'abord.\n");
