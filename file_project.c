@@ -1,18 +1,3 @@
-/******************************************************************************
-Le but du mini-projet est de réaliser un petit gestionnaire de fichiers. La « partition » du file system sera un
-fichier UNIX de taille suffisante pour y faire des essais probants, et les opérations de base (création, suppression,
-copie et déplacement de fichiers et/ou répertoires) devront être disponibles. En complément de ces dernières,
-vous devrez aussi implanter une gestion des droits d’accès ainsi que la notion de lien.
-La gestion de l’espace libre (par exemple suite à la suppression de fichier(s)) est un aspect important du
-projet.  Toutes les fonctionnalités de plus haut niveau sont les bienvenues, notamment :
-— une gestion des accès concurrents ;
-— la possibilité de sauvegarder / restaurer une (portion de) partition ; — un makefile pour automatiser la production de l’exécutable (et le cas échéant de la documentation
-doxygen) et l’installation de votre logiciel (on pourra vérifier que l’utilisateur a des droits en écriture sur
-/usr/local ou créer un répertoire idoine dans le HOME de l’utilisateur) ;  donne le code xource du projet et le nom de chaque fichier
-**********************************************************************************/
-
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
