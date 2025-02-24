@@ -167,6 +167,7 @@ int connectionCompte(const char *nomFichier, const char *identifiant) {
         return 0;
     }
 }
+
 // Fonction pour afficher le chemin actuel
 void afficherCheminActuel() {
     if (idUtilisateurConnecte != -1)
@@ -255,6 +256,8 @@ void listerRepertoiresFichiers(const char *nomFichier) {
         printf("📁 Aucun fichier ou dossier trouvé.\n");  // Afficher un message si aucun contenu n'est trouvé
     }
 }
+
+// Fonction pour chnager de répertoire 
 void changerRepertoire(const char *nomDossier) {
     if (idUtilisateurConnecte == -1) {
         printf("⚠️ Veuillez vous connecter d'abord.\n");
