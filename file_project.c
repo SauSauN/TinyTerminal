@@ -1,3 +1,18 @@
+/******************************************************************************
+Le but du mini-projet est de réaliser un petit gestionnaire de fichiers. La « partition » du file system sera un
+fichier UNIX de taille suffisante pour y faire des essais probants, et les opérations de base (création, suppression,
+copie et déplacement de fichiers et/ou répertoires) devront être disponibles. En complément de ces dernières,
+vous devrez aussi implanter une gestion des droits d’accès ainsi que la notion de lien.
+La gestion de l’espace libre (par exemple suite à la suppression de fichier(s)) est un aspect important du
+projet.  Toutes les fonctionnalités de plus haut niveau sont les bienvenues, notamment :
+— une gestion des accès concurrents ;
+— la possibilité de sauvegarder / restaurer une (portion de) partition ; — un makefile pour automatiser la production de l’exécutable (et le cas échéant de la documentation
+doxygen) et l’installation de votre logiciel (on pourra vérifier que l’utilisateur a des droits en écriture sur
+/usr/local ou créer un répertoire idoine dans le HOME de l’utilisateur) ;  donne le code xource du projet et le nom de chaque fichier
+**********************************************************************************/
+
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,7 +20,7 @@
 // Définir les tailles maximales pour les noms, les chemins et les entrées utilisateur
 #define MAX_NOM 50
 #define MAX_INPUT 100
-#define MAX_CHEMIN 1000  
+#define MAX_CHEMIN 1000000  
 
 // Structure pour représenter un utilisateur
 typedef struct {
@@ -138,38 +153,38 @@ void afficherUslist(const char *nomFichier) {
 
 // Fonction pour connecter un utilisateur
 int connectionCompte(const char *nomFichier, const char *identifiant) {
-    FILE *fichier = fopen(nomFichier, "rb");  // Ouvrir le fichier en mode lecture binaire
-    if (!fichier) return 0;  // Retourner 0 si le fichier ne peut pas être ouvert
+    FILE *fichier = fopen(nomFichier, "rb");
+    if (!fichier) return 0;
 
     char ligne[MAX_CHEMIN], nom[MAX_NOM];
     int id, trouve = 0;
     
-    // Lire le fichier ligne par ligne pour trouver l'utilisateur
     while (fgets(ligne, sizeof(ligne), fichier)) {
         if (sscanf(ligne, "File/Uslist.txt: %d %s", &id, nom) == 2) {
-            if (strcmp(nom, identifiant) == 0) {  // Comparer le nom de l'utilisateur
+            if (strcmp(nom, identifiant) == 0) {
                 trouve = 1;
-                idUtilisateurConnecte = id;  // Mettre à jour l'ID de l'utilisateur connecté
-                strcpy(ident, identifiant);  // Mettre à jour le nom de l'utilisateur connecté
+                idUtilisateurConnecte = id;
+                strcpy(ident, identifiant);
+                // Initialiser le chemin actuel
+                snprintf(cheminActuel, sizeof(cheminActuel), "User/id%d_%s/", id, identifiant);
                 break;
             }
         }
     }
-    fclose(fichier);  // Fermer le fichier
+    fclose(fichier);
 
     if (trouve) {
-        printf("✅ Connexion réussie : %s\n", identifiant);  // Confirmer la connexion
+        printf("✅ Connexion réussie : %s\n", identifiant);
         return 1;
     } else {
-        printf("⚠️ Utilisateur non trouvé.\n");  // Afficher un message d'erreur
+        printf("⚠️ Utilisateur non trouvé.\n");
         return 0;
     }
 }
-
 // Fonction pour afficher le chemin actuel
 void afficherCheminActuel() {
     if (idUtilisateurConnecte != -1)
-        printf("📂 Vous êtes dans : User/id%d_%s\n", idUtilisateurConnecte, ident);  // Afficher le chemin actuel
+        printf("📂 Vous êtes dans ce dossier : %s\n",cheminActuel);  // Afficher le chemin actuel
     else
         printf("⚠️ Aucun utilisateur connecté.\n");  // Afficher un message d'erreur
 }
@@ -195,6 +210,16 @@ void creerRepertoireUtilisateur(const char *nomFichier, const char *nomRepertoir
     printf("📁 Répertoire '%s' créé avec succès !\n", nomRepertoire);  // Confirmer la création
 }
 
+// Fonction pour enlever le caractère après le dernier slash dans une chaîne
+void remove_char_after_last_slash(char *str) {
+    // Trouver la position du dernier slash
+    char *last_slash = strrchr(str, '/');
+    if (last_slash != NULL && *(last_slash + 1) != '\0') {
+        // Remplacer le caractère après le dernier slash par '\0'
+        *(last_slash + 1) = '\0';
+    }
+}
+
 // Fonction pour lister les répertoires et fichiers d'un utilisateur
 void listerRepertoiresFichiers(const char *nomFichier) {
     if (idUtilisateurConnecte == -1) {
@@ -213,7 +238,7 @@ void listerRepertoiresFichiers(const char *nomFichier) {
     // Construire le chemin de l'utilisateur connecté
     snprintf(cheminUtilisateur, sizeof(cheminUtilisateur), "User/id%d_%s/", idUtilisateurConnecte, ident);
 
-    printf("\n📂 Contenu de votre espace (%s) :\n", cheminUtilisateur);
+    printf("\n📂 Contenu de votre espace (ID racine : %d) :\n", idUtilisateurConnecte); // Afficher l'ID du répertoire racine
     printf("────────────────────────────────\n");
 
     int trouve = 0;
@@ -229,69 +254,123 @@ void listerRepertoiresFichiers(const char *nomFichier) {
     if (!trouve) printf("📁 Aucun fichier ou dossier trouvé.\n");  // Afficher un message si aucun contenu n'est trouvé
 }
 
-// Fonction pour changer de répertoire
 void changerRepertoire(const char *nomDossier) {
     if (idUtilisateurConnecte == -1) {
-        printf("⚠️ Veuillez vous connecter d'abord.\n");  // Afficher un message d'erreur
+        printf("⚠️ Veuillez vous connecter d'abord.\n");
         return;
     }
 
-    // Calculer la taille requise pour le nouveau chemin
-    size_t requiredSize = strlen(cheminActuel) + strlen(nomDossier) + 3;  // +3 pour '/', '/' et '\0'
-    char *nouveauChemin = malloc(requiredSize);  // Allouer de la mémoire pour le nouveau chemin
-    if (!nouveauChemin) {
-        perror("Erreur d'allocation mémoire");  // Afficher une erreur si l'allocation échoue
-        return;
-    }
+    char nouveauChemin[MAX_CHEMIN];
 
     // Cas 1 : Remonter d'un niveau (cd ..)
     if (strcmp(nomDossier, "..") == 0) {
-        char *dernierSlash = strrchr(cheminActuel, '/');  // Trouver le dernier '/'
+        char *dernierSlash = strrchr(cheminActuel, '/');
         if (dernierSlash != NULL && dernierSlash != cheminActuel) {
-            *dernierSlash = '\0';  // Tronquer le chemin au dernier '/'
+            *dernierSlash = '\0'; // Tronquer le chemin au dernier '/'
+            remove_char_after_last_slash(cheminActuel);
+            printf("Vous êtes maintenant dans : %s\n", cheminActuel); // Affiche le nouveau chemin
         } else {
-            printf("⚠️ Impossible de remonter plus haut.\n");  // Afficher un message d'erreur
+            printf("⚠️ Impossible de remonter plus haut.\n");
         }
     }
     // Cas 2 : Descendre dans un répertoire (cd <nom_du_répertoire>)
     else {
-        // Construire le nouveau chemin avec un '/' à la fin
-        snprintf(nouveauChemin, requiredSize, "%s/%s/", cheminActuel, nomDossier);
+        // Vérifier si le chemin dépassera la taille du tampon
+        size_t longueurChemin = strlen(cheminActuel) + strlen(nomDossier) + 2; // +2 pour '/' et '\0'
+        if (longueurChemin >= MAX_CHEMIN) {
+            printf("⚠️ Chemin trop long.\n");
+            return;
+        }
+
+        // Construire le nouveau chemin
+        int n = snprintf(nouveauChemin, sizeof(nouveauChemin), "%s%s/", cheminActuel, nomDossier);
+
+        // Vérifier si snprintf a tronqué la chaîne
+        if (n < 0 || n >= sizeof(nouveauChemin)) {
+            printf("⚠️ Erreur de construction du chemin.\n");
+            return;
+        }
 
         // Vérifier si le répertoire existe dans le disque virtuel
-        FILE *fichier = fopen("projet.bin", "rb");  // Ouvrir le fichier en mode lecture binaire
+        FILE *fichier = fopen("projet.bin", "rb");
         if (!fichier) {
-            perror("Erreur de lecture");  // Afficher une erreur si le fichier ne peut pas être ouvert
-            free(nouveauChemin);  // Libérer la mémoire allouée
+            perror("Erreur de lecture");
             return;
         }
 
         char ligne[MAX_CHEMIN];
         int trouve = 0;
-        // Lire le fichier ligne par ligne pour vérifier si le répertoire existe
         while (fgets(ligne, sizeof(ligne), fichier)) {
-            ligne[strcspn(ligne, "\n")] = '\0';  // Supprimer le saut de ligne
+            ligne[strcspn(ligne, "\n")] = '\0'; // Supprimer le saut de ligne
             if (strcmp(ligne, nouveauChemin) == 0) {
                 trouve = 1;
                 break;
             }
         }
-        fclose(fichier);  // Fermer le fichier
+        fclose(fichier);
 
         if (trouve) {
             // Mettre à jour le chemin actuel
             strcpy(cheminActuel, nouveauChemin);
         } else {
-            printf("⚠️ Répertoire non trouvé.\n");  // Afficher un message d'erreur
+            printf("⚠️ Répertoire non trouvé.\n");
         }
     }
-
-    // Libérer la mémoire allouée
-    free(nouveauChemin);
 
     // Afficher le chemin actuel
     printf("📂 Répertoire actuel: %s\n", cheminActuel);
 }
+
+// Fonction pour supprimer un répertoire
+void supprimerRepertoire(const char *nomFichier, const char *nomRepertoire) {
+    if (idUtilisateurConnecte == -1) {
+        printf("⚠️ Veuillez vous connecter d'abord.\n");
+        return;
+    }
+
+    char chemin[MAX_CHEMIN];
+    // Construire le chemin du répertoire à supprimer
+    snprintf(chemin, sizeof(chemin), "User/id%d_%s/%s/\n", idUtilisateurConnecte, ident, nomRepertoire);
+
+    FILE *fichier = fopen(nomFichier, "rb");
+    if (!fichier) {
+        perror("Erreur de lecture");
+        return;
+    }
+
+    FILE *tempFile = fopen("temp.bin", "wb");
+    if (!tempFile) {
+        perror("Erreur de création du fichier temporaire");
+        fclose(fichier);
+        return;
+    }
+
+    char ligne[MAX_CHEMIN];
+    int trouve = 0;
+
+    // Lire le fichier ligne par ligne et copier les lignes sauf celle correspondant au répertoire à supprimer
+    while (fgets(ligne, sizeof(ligne), fichier)) {
+        if (strcmp(ligne, chemin)) {
+            fputs(ligne, tempFile);
+        } else {
+            trouve = 1;
+        }
+    }
+
+    fclose(fichier);
+    fclose(tempFile);
+
+    if (trouve) {
+        // Remplacer le fichier original par le fichier temporaire
+        remove(nomFichier);
+        rename("temp.bin", nomFichier);
+        printf("📁 Répertoire '%s' supprimé avec succès !\n", nomRepertoire);
+    } else {
+        remove("temp.bin");
+        printf("⚠️ Répertoire '%s' non trouvé.\n", nomRepertoire);
+    }
+}
+
 
 // Fonction principale
 int main(int argc, char *argv[]) {
@@ -323,11 +402,12 @@ int main(int argc, char *argv[]) {
                 if (strcmp(input, "-exit") == 0) break;  // Quitter la boucle
                 else if (strcmp(input, "-mypwd") == 0) afficherCheminActuel();  // Afficher le chemin actuel
                 else if (strncmp(input, "-mkdir ", 7) == 0) creerRepertoireUtilisateur(nomFichier, input + 7);  // Créer un répertoire
-                else if (strcmp(input, "-myls") == 0) listerRepertoiresFichiers(nomFichier);  // Lister les répertoires et fichiers
+                else if (strcmp(input, "-mylt") == 0) listerRepertoiresFichiers(nomFichier);  // Lister les répertoires et fichiers
                 else if (strncmp(input, "-cd ", 4) == 0) changerRepertoire(input + 4);  // Changer de répertoire
-                else printf("⚠️ Commande inconnue.\n");  // Afficher un message d'erreur pour les commandes inconnues
+                else if (strncmp(input, "-rmdir ", 7) == 0) supprimerRepertoire(nomFichier, input + 7);  // Nouvelle commande
+                else printf("⚠️ Commande inconnue.\n");
             }
         }
     }
-    return 0;  // Terminer le programme
+    return 0;
 }
