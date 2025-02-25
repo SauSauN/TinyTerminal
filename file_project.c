@@ -242,7 +242,13 @@ void listerRepertoiresFichiers(const char *nomFichier) {
 
                 // Vérifier si c'est un répertoire (se termine par '/')
                 if (nom[strlen(nom) - 1] == '/') {
-                    printf("📁 %s\n", nom);  // Afficher le répertoire
+                    // Vérifier qu'il n'y a pas d'autres slashes après le premier
+                    char *slash = strchr(nom, '/');
+                    if (slash != NULL && slash == nom + strlen(nom) - 1) {
+                        // Afficher uniquement les répertoires de premier niveau
+                        printf("📁 %s\n", nom);
+                        trouve = 1;
+                    }
                 } else {
                     printf("📄 %s\n", nom);  // Afficher le fichier
                 }
@@ -332,49 +338,150 @@ void supprimerRepertoire(const char *nomFichier, const char *nomRepertoire) {
         return;
     }
 
-    char chemin[MAX_CHEMIN];
     // Construire le chemin du répertoire à supprimer
-    snprintf(chemin, sizeof(chemin), "User/id%d_%s/%s/\n", idUtilisateurConnecte, ident, nomRepertoire);
+    char chemin[MAX_CHEMIN + MORE_CHEMIN];
+    snprintf(chemin, sizeof(chemin), "%s%s/", cheminActuel, nomRepertoire);
 
+    // Ouvrir le fichier en mode lecture
     FILE *fichier = fopen(nomFichier, "rb");
     if (!fichier) {
         perror("Erreur de lecture");
         return;
     }
 
-    FILE *tempFile = fopen("temp.bin", "wb");
-    if (!tempFile) {
-        perror("Erreur de création du fichier temporaire");
+    // Lire tout le contenu du fichier dans un buffer
+    fseek(fichier, 0, SEEK_END);
+    long tailleFichier = ftell(fichier);
+    fseek(fichier, 0, SEEK_SET);
+
+    char *contenu = (char *)malloc(tailleFichier + 1);
+    if (!contenu) {
+        perror("Erreur d'allocation mémoire");
         fclose(fichier);
         return;
     }
 
-    char ligne[MAX_CHEMIN];
+    fread(contenu, 1, tailleFichier, fichier);
+    contenu[tailleFichier] = '\0';  // Ajouter un terminateur de chaîne
+    fclose(fichier);
+
+    // Parcourir le contenu pour supprimer les lignes correspondantes
+    char *ligne = strtok(contenu, "\n");
+    char nouveauContenu[MAX_CHEMIN * 1000] = "";  // Buffer pour stocker le nouveau contenu
     int trouve = 0;
 
-    // Lire le fichier ligne par ligne et copier les lignes sauf celle correspondant au répertoire à supprimer
-    while (fgets(ligne, sizeof(ligne), fichier)) {
-        if (strcmp(ligne, chemin)) {
-            fputs(ligne, tempFile);
+    while (ligne != NULL) {
+        // Vérifier si la ligne commence par le chemin du répertoire à supprimer
+        if (strncmp(ligne, chemin, strlen(chemin)) != 0) {
+            // Si la ligne ne correspond pas, l'ajouter au nouveau contenu
+            strcat(nouveauContenu, ligne);
+            strcat(nouveauContenu, "\n");
         } else {
+            // Si la ligne correspond, la marquer comme trouvée
             trouve = 1;
         }
+        ligne = strtok(NULL, "\n");
     }
 
+    // Réécrire le fichier avec le nouveau contenu
+    fichier = fopen(nomFichier, "wb");
+    if (!fichier) {
+        perror("Erreur d'écriture");
+        free(contenu);
+        return;
+    }
+
+    fprintf(fichier, "%s", nouveauContenu);
     fclose(fichier);
-    fclose(tempFile);
+
+    // Libérer la mémoire
+    free(contenu);
 
     if (trouve) {
-        // Remplacer le fichier original par le fichier temporaire
-        remove(nomFichier);
-        rename("temp.bin", nomFichier);
-        printf("📁 Répertoire '%s' supprimé avec succès !\n", nomRepertoire);
+        printf("✅ Répertoire '%s' supprimé avec succès !\n", nomRepertoire);
     } else {
-        remove("temp.bin");
         printf("⚠️ Répertoire '%s' non trouvé.\n", nomRepertoire);
     }
 }
 
+void supprimerFichier(const char *nomFichier, const char *nomfichier) {
+    if (idUtilisateurConnecte == -1) {
+        printf("⚠️ Veuillez vous connecter d'abord.\n");
+        return;
+    }
+
+    // Construire le chemin du fichier à supprimer
+    char chemin[MAX_CHEMIN + MORE_CHEMIN];
+    snprintf(chemin, sizeof(chemin), "%s%s", cheminActuel, nomfichier);
+
+    // Ouvrir le fichier en mode lecture
+    FILE *fichier = fopen(nomFichier, "rb");
+    if (!fichier) {
+        perror("Erreur de lecture");
+        return;
+    }
+
+    // Lire tout le contenu du fichier dans un buffer
+    fseek(fichier, 0, SEEK_END);
+    long tailleFichier = ftell(fichier);
+    fseek(fichier, 0, SEEK_SET);
+
+    char *contenu = (char *)malloc(tailleFichier + 1);
+    if (!contenu) {
+        perror("Erreur d'allocation mémoire");
+        fclose(fichier);
+        return;
+    }
+
+    fread(contenu, 1, tailleFichier, fichier);
+    contenu[tailleFichier] = '\0';  // Ajouter un terminateur de chaîne
+    fclose(fichier);
+
+    // Parcourir le contenu pour supprimer la ligne correspondante et les 7 lignes suivantes
+    char *ligne = strtok(contenu, "\n");
+    char nouveauContenu[MAX_CHEMIN * 1000] = "";  // Buffer pour stocker le nouveau contenu
+    int trouve = 0;
+    int lignesASupprimer = 0;  // Compteur pour les lignes à supprimer
+
+    while (ligne != NULL) {
+        // Vérifier si la ligne correspond au fichier à supprimer
+        if (strcmp(ligne, chemin) == 0) {
+            trouve = 1;
+            lignesASupprimer = 8;  // Supprimer cette ligne et les 7 suivantes
+        }
+
+        // Si nous ne sommes pas en train de supprimer des lignes, ajouter la ligne au nouveau contenu
+        if (lignesASupprimer == 0) {
+            strcat(nouveauContenu, ligne);
+            strcat(nouveauContenu, "\n");
+        } else {
+            // Décrémenter le compteur de lignes à supprimer
+            lignesASupprimer--;
+        }
+
+        ligne = strtok(NULL, "\n");
+    }
+
+    // Réécrire le fichier avec le nouveau contenu
+    fichier = fopen(nomFichier, "wb");
+    if (!fichier) {
+        perror("Erreur d'écriture");
+        free(contenu);
+        return;
+    }
+
+    fprintf(fichier, "%s", nouveauContenu);
+    fclose(fichier);
+
+    // Libérer la mémoire
+    free(contenu);
+
+    if (trouve) {
+        printf("✅ Fichier '%s' supprimé avec succès !\n", nomfichier);
+    } else {
+        printf("⚠️ Fichier '%s' non trouvé.\n", nomfichier);
+    }
+}
 
 // Fonction principale
 int main(int argc, char *argv[]) {
@@ -409,6 +516,7 @@ int main(int argc, char *argv[]) {
                 else if (strcmp(input, "-mylt") == 0) listerRepertoiresFichiers(nomFichier);  // Lister les répertoires et fichiers
                 else if (strncmp(input, "-cd ", 4) == 0) changerRepertoire(input + 4);  // Changer de répertoire
                 else if (strncmp(input, "-rmdir ", 7) == 0) supprimerRepertoire(nomFichier, input + 7);  // Nouvelle commande
+                else if (strncmp(input, "-rm ", 4) == 0) supprimerFichier(nomFichier, input + 4);  // Supprimer un fichier
                 else printf("⚠️ Commande inconnue.\n");
             }
         }
