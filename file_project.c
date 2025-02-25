@@ -1,12 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 // Définir les tailles maximales pour les noms, les chemins et les entrées utilisateur
 #define MAX_NOM 50
 #define MAX_INPUT 100
 #define MAX_CHEMIN 1000  
 #define MORE_CHEMIN 100
+#define FS_SIZE 10 * 1024 * 1024  // 10 Mo
 
 // Structure pour représenter un utilisateur
 typedef struct {
@@ -250,7 +253,9 @@ void listerRepertoiresFichiers(const char *nomFichier) {
                         trouve = 1;
                     }
                 } else {
-                    printf("📄 %s\n", nom);  // Afficher le fichier
+                    if (strchr(nom, '/') == NULL) {
+                        printf("📄 %s\n", nom);  // Afficher le fichier
+                    } 
                 }
             }
         }
@@ -404,6 +409,7 @@ void supprimerRepertoire(const char *nomFichier, const char *nomRepertoire) {
     }
 }
 
+// Fonction pour supprimer un fichier
 void supprimerFichier(const char *nomFichier, const char *nomfichier) {
     if (idUtilisateurConnecte == -1) {
         printf("⚠️ Veuillez vous connecter d'abord.\n");
@@ -483,6 +489,102 @@ void supprimerFichier(const char *nomFichier, const char *nomfichier) {
     }
 }
 
+// Fonction pour déplacer un fichier
+void deplacerFichier(const char *nomFichier, const char *nomfile, const char *nomdossier) {
+    if (idUtilisateurConnecte == -1) {
+        printf("⚠️ Veuillez vous connecter d'abord.\n");
+        return;
+    }
+
+    // Construire le chemin du fichier à déplacer
+    char cheminfile[MAX_CHEMIN + MORE_CHEMIN];
+    snprintf(cheminfile, sizeof(cheminfile), "%s%s", cheminActuel, nomfile);
+
+    // Construire le chemin du répertoire de destination
+    char cheminrep[MAX_CHEMIN + MORE_CHEMIN];
+    snprintf(cheminrep, sizeof(cheminrep), "%s%s/", cheminActuel, nomdossier);
+
+    // Construire le nouveau chemin du fichier après déplacement
+    char chemindeplacement[MAX_CHEMIN + MORE_CHEMIN];
+    snprintf(chemindeplacement, sizeof(chemindeplacement), "%s%s", cheminrep, nomfile);
+
+    // Ouvrir le fichier en mode lecture
+    FILE *fichier = fopen(nomFichier, "rb");
+    if (!fichier) {
+        perror("Erreur de lecture");
+        return;
+    }
+
+    // Variables pour vérifier l'existence du fichier et du répertoire
+    int existrep = 0, existfile = 0;
+
+    // Lire le fichier pour vérifier l'existence du fichier et du répertoire
+    char ligne[MAX_CHEMIN];
+    while (fgets(ligne, sizeof(ligne), fichier)) {
+        // Supprimer le saut de ligne
+        ligne[strcspn(ligne, "\n")] = '\0';
+
+        // Vérifier si la ligne correspond au fichier à déplacer
+        if (strcmp(ligne, cheminfile) == 0) {
+            existfile = 1;
+        }
+
+        // Vérifier si la ligne correspond au répertoire de destination
+        if (strcmp(ligne, cheminrep) == 0) {
+            existrep = 1;
+        }
+    }
+    fclose(fichier);
+
+    // Vérifier si le fichier et le répertoire existent
+    if (existfile == 0) {
+        printf("⚠️ Fichier '%s' non trouvé.\n", nomfile);
+        return;
+    }
+    if (existrep == 0) {
+        printf("⚠️ Répertoire '%s' non trouvé.\n", nomdossier);
+        return;
+    }
+
+    // Ouvrir le fichier en mode lecture et écriture
+    fichier = fopen(nomFichier, "rb");
+    if (!fichier) {
+        perror("Erreur de lecture");
+        return;
+    }
+
+    // Créer un fichier temporaire pour écrire les modifications
+    FILE *tempFile = fopen("temp.bin", "wb");
+    if (!tempFile) {
+        perror("Erreur de création du fichier temporaire");
+        fclose(fichier);
+        return;
+    }
+
+    // Parcourir le fichier ligne par ligne
+    while (fgets(ligne, sizeof(ligne), fichier)) {
+        // Supprimer le saut de ligne
+        ligne[strcspn(ligne, "\n")] = '\0';
+
+        // Si la ligne correspond au fichier à déplacer, la remplacer par le nouveau chemin
+        if (strcmp(ligne, cheminfile) == 0) {
+            fprintf(tempFile, "%s\n", chemindeplacement);
+        } else {
+            // Sinon, copier la ligne telle quelle
+            fprintf(tempFile, "%s\n", ligne);
+        }
+    }
+
+    fclose(fichier);
+    fclose(tempFile);
+
+    // Remplacer le fichier original par le fichier temporaire
+    remove(nomFichier);
+    rename("temp.bin", nomFichier);
+
+    printf("✅ Fichier '%s' déplacé vers '%s' avec succès !\n", nomfile, nomdossier);
+}
+
 // Fonction principale
 int main(int argc, char *argv[]) {
     const char *nomFichier = "projet.bin";  // Nom du fichier du disque virtuel
@@ -515,9 +617,25 @@ int main(int argc, char *argv[]) {
                 else if (strncmp(input, "-mkdir ", 7) == 0) creerRepertoireUtilisateur(nomFichier, input + 7);  // Créer un répertoire
                 else if (strcmp(input, "-mylt") == 0) listerRepertoiresFichiers(nomFichier);  // Lister les répertoires et fichiers
                 else if (strncmp(input, "-cd ", 4) == 0) changerRepertoire(input + 4);  // Changer de répertoire
-                else if (strncmp(input, "-rmdir ", 7) == 0) supprimerRepertoire(nomFichier, input + 7);  // Nouvelle commande
+                else if (strncmp(input, "-rmdir ", 7) == 0) supprimerRepertoire(nomFichier, input + 7);  // Supprimer un répertoire
                 else if (strncmp(input, "-rm ", 4) == 0) supprimerFichier(nomFichier, input + 4);  // Supprimer un fichier
-                else printf("⚠️ Commande inconnue.\n");
+                else if (strncmp(input, "-mv ", 4) == 0) {
+                    // Extraire les arguments pour la commande -mv
+                    char *args = input + 4;  // Pointeur vers le début des arguments
+                    char *nomfile = strtok(args, " ");  // Premier argument : nom du fichier
+                    char *nomdossier = strtok(NULL, " ");  // Deuxième argument : nom du dossier
+
+                    // Vérifier que les deux arguments sont présents
+                    if (nomfile == NULL || nomdossier == NULL) {
+                        printf("⚠️ Usage: -mv <nomfile> <nomdossier>\n");
+                    } else {
+                        // Appeler la fonction deplacerFichier avec les arguments extraits
+                        deplacerFichier(nomFichier, nomfile, nomdossier);
+                    }
+                }
+                else {
+                    printf("⚠️ Commande inconnue.\n");
+                }
             }
         }
     }
