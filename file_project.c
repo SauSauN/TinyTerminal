@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <time.h>
 #include <unistd.h>
 
 // Définir les tailles maximales pour les noms, les chemins et les entrées utilisateur
@@ -21,6 +22,7 @@ typedef struct {
 int idUtilisateurConnecte = -1;  // ID de l'utilisateur connecté (-1 si aucun utilisateur n'est connecté)
 char ident[MAX_NOM] = "";        // Nom de l'utilisateur connecté
 char cheminActuel[MAX_CHEMIN] = "";  // Chemin actuel dans le système de fichiers virtuel
+char cheminPrincipal[MAX_CHEMIN] = "";  // Chemin actuel dans le système de fichiers virtuel
 
 // Fonction pour vérifier si un fichier existe
 int fichierExiste(const char *nomFichier) {
@@ -156,6 +158,9 @@ int connectionCompte(const char *nomFichier, const char *identifiant) {
                 strcpy(ident, identifiant);
                 // Initialiser le chemin actuel
                 snprintf(cheminActuel, sizeof(cheminActuel), "User/id%d_%s/", id, identifiant);
+                // Copie correcte du cheminActuel vers cheminPrincipal
+                strncpy(cheminPrincipal, cheminActuel, sizeof(cheminPrincipal));
+                cheminPrincipal[sizeof(cheminPrincipal) - 1] = '\0';  // Sécuriser la fin de la chaîne
                 break;
             }
         }
@@ -489,6 +494,11 @@ void supprimerFichier(const char *nomFichier, const char *nomfichier) {
     }
 }
 
+// Fonction pour vérifier si une chaîne commence par un préfixe donné
+int commencePar(const char *chaine, const char *prefixe) {
+    return strncmp(chaine, prefixe, strlen(prefixe)) == 0;
+}
+
 // Fonction pour déplacer un fichier
 void deplacerFichier(const char *nomFichier, const char *nomfile, const char *nomdossier) {
     if (idUtilisateurConnecte == -1) {
@@ -502,7 +512,15 @@ void deplacerFichier(const char *nomFichier, const char *nomfile, const char *no
 
     // Construire le chemin du répertoire de destination
     char cheminrep[MAX_CHEMIN + MORE_CHEMIN];
-    snprintf(cheminrep, sizeof(cheminrep), "%s%s/", cheminActuel, nomdossier);
+
+    // Vérifier si le chemin de destination est absolu (commence par "User/")
+    if (commencePar(nomdossier, "User/")) {
+        // Utiliser le chemin absolu fourni
+        snprintf(cheminrep, sizeof(cheminrep), "%s/", nomdossier);
+    } else {
+        // Utiliser le chemin relatif au répertoire actuel
+        snprintf(cheminrep, sizeof(cheminrep), "%s%s/", cheminActuel, nomdossier);
+    }
 
     // Construire le nouveau chemin du fichier après déplacement
     char chemindeplacement[MAX_CHEMIN + MORE_CHEMIN];
