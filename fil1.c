@@ -8,6 +8,7 @@
 #define MAX_INPUT 100
 #define MAX_CHEMIN 1000  
 #define MORE_CHEMIN 100
+#define MAX_FILE_NAME 250
 
 // Structure pour représenter un utilisateur
 typedef struct {
@@ -523,59 +524,49 @@ void handleFileContent(FILE *file, const char *file_name) {
 /*Cette fonction permet de créer un fichier
 On verifie dans un premier temps l'existance ou non du fichier pour decider du mode d'ouverture de celui-ci
 
-VERIFIER COMMENT GERER ECRITURE/MODIFICATION DU FICHIER S IL EXISTE DEJA
+voir comment gérer la modification du fichier au niveau des metas
 */
 
 void createFile(const char *file_name) {
-    int exist = fichierExiste(file_name);
-    FILE *file;
-
-    if (exist == 1) {
-        /* Si le fichier existe déjà, créer un fichier temporaire pour écrire les métadonnées 
-            en tête de fichier sans perdre son contenu initial */
-        FILE *tempFile = fopen("temp.txt", "w");
-        if (tempFile == NULL) {
-            perror("Erreur lors de la création du fichier temporaire");
-            exit(2);
-        }
-        /* Récupération de la date de création et de dernière modification */
-        char date_creation[20];
-        char last_edit[20];
-        getCurrentDateTime(date_creation, sizeof(date_creation));
-        strcpy(last_edit, date_creation);
-
-        /* Écriture des métadonnées dans le fichier temporaire */
-        writeMetadata(tempFile, file_name, date_creation, last_edit);
-
-        /* Ajout du contenu du fichier existant dans le fichier temporaire */
-        handleFileContent(tempFile, file_name);
-
-        fclose(tempFile);
-
-        /* Remplacement de l'ancien fichier par le fichier temporaire */
-        remove(file_name);
-        rename("temp.txt", file_name);
-
-        printf("Fichier '%s' mis à jour avec les métadonnées.\n", file_name);
-    } else {
-        /* Si le fichier n'existe pas encore, créer un fichier avec les métadonnées */
+    /* Vérifier si le fichier de base existe*/
+    FILE *file = fopen(file_name, "r");
+    if (file == NULL) {
+        /* s'il n'existe pas on le crée*/
         file = fopen(file_name, "w");
         if (file == NULL) {
             perror("Erreur lors de la création du fichier");
             exit(2);
         }
-
-        char date_creation[20];
-        char last_edit[20];
-        getCurrentDateTime(date_creation, sizeof(date_creation));
-        strcpy(last_edit, date_creation);
-
-        writeMetadata(file, file_name, date_creation, last_edit);
-
+        printf("Fichier '%s' créé.\n", file_name);
         fclose(file);
-
-        printf("Fichier '%s' créé avec succès avec les métadonnées.\n", file_name);
+    } else {
+        fclose(file);
     }
+
+    /*creation du fichier.meta*/
+    FILE *meta_file;
+    char meta_filename[MAX_FILE_NAME];
+
+    /* génération du nom du fichier.meta en enlevant l'extension du fichier de base*/
+    snprintf(meta_filename, sizeof(meta_filename), "%.*s.meta", (int)(strrchr(file_name, '.') - file_name), file_name);
+
+    /* ouverture du  fichier .meta en mode écriture*/
+    meta_file = fopen(meta_filename, "w");
+    if (meta_file == NULL) {
+        perror("Erreur lors de l'ouverture du fichier .meta");
+        exit(2);
+    }
+
+    // récup la date actuelle
+    char date_creation[20];
+    char last_edit[20];
+    getCurrentDateTime(date_creation, sizeof(date_creation));
+    strcpy(last_edit, date_creation);
+
+    // écriture des métadonnées dans le fichier .meta
+    writeMetadata(meta_file, file_name, date_creation, last_edit);
+    fclose(meta_file);
+    printf("Les métadonnées du fichier '%s' ont été écrites dans '%s'.\n", file_name, meta_filename);
 }
 
 
