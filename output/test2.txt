@@ -1,0 +1,6 @@
+##D
+file: test.txt
+owner: dan
+date_creat: 25/02/2025 22:51
+last_edit: 25/02/2025 22:51
+##F
