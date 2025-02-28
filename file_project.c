@@ -23,6 +23,7 @@ int idUtilisateurConnecte = -1;  // ID de l'utilisateur connecté (-1 si aucun u
 char ident[MAX_NOM] = "";        // Nom de l'utilisateur connecté
 char cheminActuel[MAX_CHEMIN] = "";  // Chemin actuel dans le système de fichiers virtuel
 char cheminPrincipal[MAX_CHEMIN] = "";  // Chemin actuel dans le système de fichiers virtuel
+const char *identite = NULL;
 
 // Fonction pour vérifier si un fichier existe
 int fichierExiste(const char *nomFichier) {
@@ -169,6 +170,7 @@ int connectionCompte(const char *nomFichier, const char *identifiant) {
 
     if (trouve) {
         printf("✅ Connexion réussie : %s\n", identifiant);
+        identite = identifiant;
         return 1;
     } else {
         printf("⚠️ Utilisateur non trouvé.\n");
@@ -258,7 +260,7 @@ void listerRepertoiresFichiers(const char *nomFichier) {
                         trouve = 1;
                     }
                 } else {
-                    if (strchr(nom, '/') == NULL) {
+                    if (strchr(nom, '/') == NULL && strstr(nom, ".meta") == NULL) {
                         printf("📄 %s\n", nom);  // Afficher le fichier
                     } 
                 }
@@ -603,6 +605,116 @@ void deplacerFichier(const char *nomFichier, const char *nomfile, const char *no
     printf("✅ Fichier '%s' déplacé vers '%s' avec succès !\n", nomfile, nomdossier);
 }
 
+// Fonction pour faire un split et renvoie le premier
+char* split_first(char *str, const char *delim) {
+    if (str == NULL || delim == NULL) {
+        return NULL; // Vérification de sécurité
+    }
+    
+    // Utilisation de strtok pour obtenir le premier token
+    char *token = strtok(str, delim);
+    
+    return token; // Retourne le premier élément (modifie la chaîne originale)
+}
+
+// Fonction pour donner les horaires et les dates
+void getCurrentDateTime(char *buffer, size_t size) {
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+    strftime(buffer, size, "%d/%m/%Y %H:%M", &tm);
+}
+
+// Fonction pour écrire les métadonnées dans un fichier
+void writeMetadata(FILE *file, const char *file_name, const char *date_creation, const char *last_edit) {
+    const char *ident = identite;
+    fprintf(file, "##D\n");
+    fprintf(file, "file: %s\n", file_name);
+    fprintf(file, "owner: %s\n", ident);
+    fprintf(file, "date_creat: %s\n", date_creation);
+    fprintf(file, "last_edit: %s\n", last_edit);
+    fprintf(file, "##F\n");
+}
+
+// Fonction pour créer un nouveau fichier
+void creerFichier(const char *nomFichier, char *file_name, char *nomdossier) {
+    if (idUtilisateurConnecte == -1) {
+        printf("⚠️ Veuillez vous connecter d'abord.\n");
+        return;
+    }
+    char cheminAct[MAX_CHEMIN];
+
+    // Vérification si nomdossier est NULL
+    if (nomdossier == NULL) {
+        snprintf(cheminAct, sizeof(cheminAct), "%s", cheminActuel);
+    } else {
+        snprintf(cheminAct, sizeof(cheminAct), "%s", nomdossier);
+    }
+
+    // Construire le chemin du fichier à créer
+    char chemin[MAX_CHEMIN + MORE_CHEMIN];
+    snprintf(chemin, sizeof(chemin), "%s%s", cheminAct, file_name);
+
+    const char delim[] = ".";
+    char *extension = file_name;
+
+    char *first = split_first(extension, delim);
+    // Construire le chemin du fichier méta données
+    char nomMeta[MAX_CHEMIN];
+    char finalnomMeta[MAX_CHEMIN +MAX_CHEMIN + MORE_CHEMIN];
+    snprintf(nomMeta, sizeof(nomMeta), "%s%s", first, ".meta");
+    snprintf(finalnomMeta, sizeof(finalnomMeta), "%s%s", cheminAct, nomMeta);
+
+    // Ouvrir le fichier en mode lecture
+    FILE *fichier = fopen(nomFichier, "ab");
+    if (!fichier) {
+        perror("Erreur de lecture");
+        return;
+    }
+    
+    fprintf(fichier, "%s\n", chemin);  // Écrire le chemin dans le fichier
+    fprintf(fichier, "%s\n", finalnomMeta);  // Écrire le chemin dans le fichier
+    // récup la date actuelle
+    char date_creation[20];
+    char last_edit[20];
+    getCurrentDateTime(date_creation, sizeof(date_creation));
+    strcpy(last_edit, date_creation);
+
+    // écriture des métadonnées dans le fichier .meta
+    writeMetadata(fichier, file_name, date_creation, last_edit);
+
+
+    fclose(fichier);  // Fermer le fichier
+    if (nomdossier == NULL) {
+        printf(" 📄 Fichier '%s' créé avec succès dans ce dossier '%s' !\n",file_name, cheminAct);  // Confirmer la création
+    } 
+}
+
+// Permet de copier les éléments d'un fichier dans un nouveau
+void copyFile(const char *nomFichier, const char *fichierSource, char *fichierDestination, char *nomdossier){
+    if (idUtilisateurConnecte == -1){
+        printf("⚠️ Veuillez vous connecter d'abord.\n");
+        return;
+    }
+
+    // Vérification des paramètres
+    if (fichierSource == fichierDestination){
+        printf("⚠️ Les noms de fichiers ne peuvent pas similaire.\n");
+        return;
+    }
+    char cheminDestination[MAX_CHEMIN];
+
+    // Vérification si nomdossier est NULL
+    if (nomdossier == NULL) {
+        snprintf(cheminDestination, sizeof(cheminDestination), "%s%s", cheminActuel, fichierDestination);
+    } else {
+        snprintf(cheminDestination, sizeof(cheminDestination), "%s%s", nomdossier, fichierDestination);
+    }
+
+    creerFichier(nomFichier, fichierDestination,nomdossier); 
+
+    printf("✅ Fichier '%s' copié avec succès vers '%s'\n", fichierSource, fichierDestination);
+}
+
 // Fonction principale
 int main(int argc, char *argv[]) {
     const char *nomFichier = "projet.bin";  // Nom du fichier du disque virtuel
@@ -637,6 +749,22 @@ int main(int argc, char *argv[]) {
                 else if (strncmp(input, "-cd ", 4) == 0) changerRepertoire(input + 4);  // Changer de répertoire
                 else if (strncmp(input, "-rmdir ", 7) == 0) supprimerRepertoire(nomFichier, input + 7);  // Supprimer un répertoire
                 else if (strncmp(input, "-rm ", 4) == 0) supprimerFichier(nomFichier, input + 4);  // Supprimer un fichier
+                else if (strncmp(input, "-touch ", 7) == 0) creerFichier(nomFichier, input + 7,NULL);  // Créer un fichier
+                else if (strncmp(input, "-cp ", 4) == 0) {
+                    // Extraire les arguments pour la commande -cp
+                    char *args = input + 4;  // Pointeur vers le début des arguments
+                    char *fichierSource = strtok(args, " ");  // Premier argument : fichier source
+                    char *fichierDestination = strtok(NULL, " ");  // Deuxième argument : fichier destination
+                    char *nomdossier = strtok(NULL, " ");  // Troisième argument : nom du dossier (facultatif)
+
+                    // Vérifier que les deux premiers arguments sont présents
+                    if (fichierSource == NULL || fichierDestination == NULL) {
+                        printf("⚠️ Usage: -cp <fichierSource> <fichierDestination> [<nomDossier>]\n");
+                    } else {
+                        // Appeler la fonction copyFile avec les arguments extraits
+                        copyFile(nomFichier, fichierSource, fichierDestination, nomdossier);
+                    }
+                }
                 else if (strncmp(input, "-mv ", 4) == 0) {
                     // Extraire les arguments pour la commande -mv
                     char *args = input + 4;  // Pointeur vers le début des arguments

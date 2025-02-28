@@ -1,0 +1,28 @@
+Répertoire: File/
+File/Uslist.txt: 10 lol
+User/id10_lol/
+User/id10_lol/rr/
+User/id10_lol/rr/tt/
+User/id10_lol/rr/tt/aa/
+User/id10_lol/rr/tt/f.txt
+File/Uslist.txt: 11 tera
+User/id11_tera/
+User/id11_tera/gg/
+User/id11_tera/rr/
+User/id11_tera/gg/f.txt
+User/id10_lol/fgh.txt
+User/id10_lol/fgh.meta
+##D
+file: fgh
+owner: lol
+date_creat: 28/02/2025 00:55
+last_edit: 28/02/2025 00:55
+##F
+User/id10_lol/g.txt
+User/id10_lol/g.meta
+##D
+file: g
+owner: lol
+date_creat: 28/02/2025 01:32
+last_edit: 28/02/2025 01:32
+##F
