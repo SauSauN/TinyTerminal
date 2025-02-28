@@ -86,6 +86,14 @@ Une fois connecté, vous pouvez utiliser les commandes suivantes :
   ```bash
   -cd documents
   ```
+- **Copier le contenu d'un fichier vers un autre :**
+  ```bash
+  -cp <fichier1> <fichier2>
+  ```
+  Exemple :
+  ```bash
+  -cp file1.txt file2.txt
+  ```
 
 - **Lister les répertoires et fichiers :**
   ```bash
