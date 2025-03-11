@@ -1,121 +1,117 @@
-# Projet de Système de Fichiers Virtuel
+# Mini-Shell pour un Système de Fichiers
 
-Ce projet est une implémentation simple d'un système de fichiers virtuel en C. Il permet de gérer des utilisateurs, des répertoires et des fichiers dans un environnement simulé. Le programme utilise un fichier binaire (`projet.bin`) pour stocker les données du système de fichiers.
+## 1. Présentation du Sujet
+Le but du mini-projet est de réaliser un petit gestionnaire de fichiers. La « partition » du file system sera un fichier UNIX de taille suffisante pour y faire des essais probants, et les opérations de base (création, suppression, copie et déplacement de fichiers et/ou répertoires) devront être disponibles. En complément de ces dernières, une gestion des droits d’accès ainsi que la notion de lien seront également implantées.
 
-## Fonctionnalités
+La gestion de l’espace libre (par exemple suite à la suppression de fichier(s)) est un aspect important du projet. Il est essentiel de s'assurer que la mémoire est efficacement allouée et libérée afin d'éviter la fragmentation et d'optimiser l'utilisation de l'espace disque.
 
-### Gestion des utilisateurs :
-- Créer un nouvel utilisateur.
-- Se connecter en tant qu'utilisateur.
-- Afficher la liste des utilisateurs.
+## 2. Fonctionnalités et Exemples d'Utilisation
+Le shell supporte les commandes suivantes :
 
-### Gestion des répertoires :
-- Créer un répertoire.
-- Changer de répertoire (`cd`).
-- Lister les répertoires et fichiers dans le répertoire actuel.
+- `help` : Affiche l'aide des commandes disponibles.
+  ```sh
+  help
+  ```
 
-### Affichage :
-- Afficher le contenu du disque virtuel.
-- Afficher le chemin actuel (`pwd`).
+- `exit` : Quitte le shell.
+  ```sh
+  exit
+  ```
 
-## Utilisation
+- `pwd` : Affiche le répertoire courant.
+  ```sh
+  pwd
+  ```
+
+- `mkdir <nom>` : Crée un répertoire.
+  ```sh
+  mkdir mon_dossier
+  ```
+
+- `rmdir <nom>` : Supprime un répertoire.
+  ```sh
+  rmdir mon_dossier
+  ```
+
+- `cpdir <src> <dest> <rep>` : Copie un répertoire vers un répertoire cible.
+  ```sh
+  cpdir source_dossier destination_dossier rep1
+  ```
+
+- `cd <nom>` : Change de répertoire.
+  ```sh
+  cd mon_dossier
+  ```
+
+- `ls` : Liste le contenu du répertoire courant.
+  ```sh
+  ls
+  ```
+
+- `touch <nom> <taille>` : Crée un fichier vide de la taille spécifiée.
+  ```sh
+  touch mon_fichier.txt 1024
+  ```
+
+- `stat <nom>` : Affiche les métadonnées d'un fichier.
+  ```sh
+  stat mon_fichier.txt
+  ```
+
+- `chmod <nom> <cible> <perm>` : Modifie les permissions d'un fichier.
+  ```sh
+  chmod mon_fichier.txt owner rwx
+  ```
+
+- `write <nom> <contenu>` : Écrit du contenu dans un fichier.
+  ```sh
+  write mon_fichier.txt "Ceci est du texte."
+  ```
+
+- `cat <nom>` : Affiche le contenu d'un fichier.
+  ```sh
+  cat mon_fichier.txt
+  ```
+
+- `cp <src> <dest> <rep>` : Copie un fichier vers un répertoire cible.
+  ```sh
+  cp mon_fichier.txt copie_fichier.txt mon_dossier
+  ```
+
+- `mv <src> <rep>` : Déplace un fichier vers un répertoire cible.
+  ```sh
+  mv mon_fichier.txt mon_dossier
+  ```
+
+- `reset` : Réinitialise le système de fichiers.
+  ```sh
+  reset
+  ```
+
+## 3. Compilation et Exécution
+
+### Prérequis
+- Un compilateur C (GCC recommandé)
+- Un système compatible UNIX ou Windows avec un terminal
 
 ### Compilation
-
-Pour compiler le programme, utilisez la commande suivante :
-
-```bash
-gcc -Wall fil1.c -o exe
+```sh
+gcc -o shell filesystem.c shell.c -Wall -Wextra
 ```
-
-Cela génère un exécutable nommé `exe`.
 
 ### Exécution
-
-Le programme prend des arguments en ligne de commande pour effectuer différentes actions. Voici les commandes disponibles :
-
-#### Créer un utilisateur :
-```bash
-./exe -account <nom_utilisateur>
-```
-Exemple :
-```bash
-./exe -account alice
+```sh
+./shell
 ```
 
-#### Afficher le contenu du disque virtuel :
-```bash
-./exe -show
-```
+## 4. Utilisation
+Lorsque le programme démarre, il demande le nom de l'utilisateur, puis affiche le répertoire courant. Vous pouvez alors entrer les commandes listées ci-dessus.
 
-#### Afficher la liste des utilisateurs :
-```bash
-./exe -showus
-```
+## 5. Structure du Projet
+- `main.c` : Point d'entrée du programme
+- `shell.c` : Implémente la boucle du shell et le traitement des commandes
+- `filesystem.c` : Gère les opérations sur les fichiers et répertoires
+- `filesystem.h` : Déclarations des fonctions et structures du système de fichiers
 
-#### Se connecter en tant qu'utilisateur :
-```bash
-./exe -connect <nom_utilisateur>
-```
-Exemple :
-```bash
-./exe -connect alice
-```
-
-Une fois connecté, vous pouvez utiliser les commandes suivantes :
-
-- **Afficher le chemin actuel :**
-  ```bash
-  -mypwd
-  ```
-
-- **Créer un répertoire :**
-  ```bash
-  -mkdir <nom_répertoire>
-  ```
-  Exemple :
-  ```bash
-  -mkdir documents
-  ```
-
-- **Changer de répertoire :**
-  ```bash
-  -cd <nom_répertoire>
-  ```
-  Exemple :
-  ```bash
-  -cd documents
-  ```
-
-- **Lister les répertoires et fichiers :**
-  ```bash
-  -myls
-  ```
-
-- **Quitter la session :**
-  ```bash
-  -exit
-  ```
-
-## Structure du Projet
-
-- `fil1.c` : Le fichier source contenant le code du programme.
-- `projet.bin` : Le fichier binaire utilisé pour stocker les données du système de fichiers virtuel. Ce fichier est créé automatiquement lors de la première exécution du programme.
-
-## Exemple d'Utilisation
-
-```bash
-./exe -account alice
-./exe -connect alice
--mkdir documents
--cd documents
--mypwd
--myls
--exit
-```
-
-## Avertissements
-
-- Le programme utilise un fichier binaire (`projet.bin`) pour stocker les données. **Ne modifiez pas ce fichier manuellement**, car cela pourrait corrompre le système de fichiers virtuel.
-- Le programme ne gère pas encore les permissions ou les fichiers individuels. Il se concentre sur la gestion des répertoires et des utilisateurs.
+## 6. Auteur
 
