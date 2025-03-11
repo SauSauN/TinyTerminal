@@ -77,6 +77,14 @@ Le shell supporte les commandes suivantes :
   ```sh
   cp mon_fichier.txt copie_fichier.txt mon_dossier
   ```
+- **Copier le contenu d'un fichier vers un autre :**
+  ```bash
+  -cp <fichier1> <fichier2>
+  ```
+  Exemple :
+  ```bash
+  -cp file1.txt file2.txt
+  ```
 
 - `mv <src> <rep>` : Déplace un fichier vers un répertoire cible.
   ```sh
