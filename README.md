@@ -96,7 +96,86 @@ Le shell supporte les commandes suivantes :
   reset
   ```
 
-## 3. Compilation et Exécution
+## 3. Structure des inodes
+
+```c
+typedef struct {
+    char name[MAX_FILENAME];          // Nom du fichier ou du répertoire
+    int is_directory;                 // 1 = répertoire, 0 = fichier
+    int size;                         // Taille du fichier en octets
+    time_t creation_time;             // Date de création
+    time_t modification_time;         // Date de la dernière modification
+    char owner[MAX_FILENAME];         // Propriétaire du fichier
+    char permissions[10];             // Permissions du fichier (ex: "rwxr-xr--")
+    int block_indices[NUM_BLOCKS];    // Indices des blocs alloués
+    int block_count;                  // Nombre de blocs alloués
+} Inode;
+```
+
+### Explication :
+- **name** : Nom du fichier ou dossier.
+- **is_directory** : Indique si l’inode représente un fichier (0) ou un dossier (1).
+- **size** : Taille en octets du fichier.
+- **creation_time / modification_time** : Dates de création et de dernière modification.
+- **owner** : Nom du propriétaire du fichier.
+- **permissions** : Permissions sous forme de chaîne (ex : "rwxr-xr--").
+- **block_indices** : Tableau contenant les indices des blocs de données utilisés.
+- **block_count** : Nombre total de blocs utilisés.
+
+---
+
+## 4. Structure du superbloc
+
+```c
+typedef struct {
+    int num_blocks;               // Nombre total de blocs
+    int num_inodes;               // Nombre total d'inodes
+    int free_blocks[NUM_BLOCKS];  // Tableau des blocs libres (1 = libre, 0 = occupé)
+    int free_inodes[NUM_INODES];  // Tableau des inodes libres (1 = libre, 0 = occupé)
+    Inode inodes[NUM_INODES];     // Table des inodes
+} superblock;
+```
+
+### Explication :
+- **num_blocks** : Nombre total de blocs disponibles.
+- **num_inodes** : Nombre total d’inodes.
+- **free_blocks** : Tableau qui indique quels blocs sont libres.
+- **free_inodes** : Tableau qui indique quels inodes sont libres.
+- **inodes** : Table des inodes contenant les métadonnées des fichiers.
+
+---
+
+## 5. Structure du système de fichiers
+
+```c
+typedef struct {
+    Inode inodes[MAX_FILES];      // Table des inodes
+    int inode_count;              // Nombre d'inodes utilisés
+    char current_directory[MAX_FILENAME]; // Répertoire actuel
+} Filesystem;
+```
+
+### Explication :
+- **inodes** : Tableau contenant les inodes du système de fichiers.
+- **inode_count** : Nombre total d’inodes actuellement utilisés.
+- **current_directory** : Stocke le chemin du répertoire courant.
+
+---
+
+## 6. Structure d’entrée de fichier
+
+```c
+typedef struct {
+    char name[50];      // Nom du fichier
+    int inode_index;    // Index de l'inode associé
+} file_entry;
+```
+
+### Explication :
+- **name** : Nom du fichier associé.
+- **inode_index** : Index de l’inode correspondant.
+
+## 7. Compilation et Exécution
 
 ### Prérequis
 - Un compilateur C (GCC recommandé)
@@ -112,10 +191,10 @@ gcc -o shell filesystem.c shell.c -Wall -Wextra
 ./shell
 ```
 
-## 4. Utilisation
+## 8. Utilisation
 Lorsque le programme démarre, il demande le nom de l'utilisateur, puis affiche le répertoire courant. Vous pouvez alors entrer les commandes listées ci-dessus.
 
-## 5. Structure du Projet
+## 9. Structure du Projet
 - `main.c` : Point d'entrée du programme
 - `shell.c` : Implémente la boucle du shell et le traitement des commandes
 - `filesystem.c` : Gère les opérations sur les fichiers et répertoires
