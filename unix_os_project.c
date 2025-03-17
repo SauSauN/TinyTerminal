@@ -76,8 +76,6 @@ superblock sb;
 char block_data[NUM_BLOCKS][BLOCK_SIZE]; // Tableau pour stocker les données des fichiers
 file_entry file_table[NUM_INODES];      // Table des noms de fichiers
 
-void save_filesystem(Filesystem *fs);
-
 // Fonction pour créer un groupe
 void user_add_group(Filesystem *fs, const char *groupname) {
     if (groupname == NULL || strlen(groupname) == 0) {
@@ -1249,8 +1247,6 @@ int main() {
     Filesystem fs;
     init_filesystem(&fs); // Initialiser le système de fichiers  
     init_main(&fs);
-    // Vider le buffer d'entrée après scanf
-
     shell(&fs, current_own); // Lancer le shell
     return 0;
 }
