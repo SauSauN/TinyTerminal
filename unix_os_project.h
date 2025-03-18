@@ -105,8 +105,9 @@ void move_file(Filesystem *fs, const char *filename, const char *nomrepertoire);
 char* extract_path(const char* full_path);
 void copy_repertoire(Filesystem *fs, const char *repertoirenamedepart, const char *repertoirenamefinal, const char *nomrepertoire);
 void move_directory(Filesystem *fs, const char *repertoirename, const char *nomrepertoire);
-void rename_file(Filesystem *fs, const char *filenamedepart, const char *filenamefinal) 
-void rename_directory(Filesystem *fs, const char *repnamedepart, const char *repnamefinal)
+void rename_file(Filesystem *fs, const char *filenamedepart, const char *filenamefinal);
+void rename_directory(Filesystem *fs, const char *repnamedepart, const char *repnamefinal);
+void list_all_directory(Filesystem *fs);
 void clear_screen();
 void help();
 void shell(Filesystem *fs, char *current_own);
