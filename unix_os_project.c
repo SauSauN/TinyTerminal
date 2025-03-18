@@ -1127,6 +1127,45 @@ void clear_screen() {
     #endif
 }
 
+// Fonction pour lister le contenu du répertoire avec leur métadonnées 
+void list_all_directory(Filesystem *fs) {
+    printf("Contenu de '%s':\n", fs->current_directory);
+
+    int found = 0;
+    int file_count = 0;
+    int dir_count = 0;
+    for (int i = 0; i < fs->inode_count; i++) {
+        char *item_name = strrchr(fs->inodes[i].name, '/');
+        if (item_name) {
+            item_name++; // Ignorer le '/'
+        } else {
+            item_name = fs->inodes[i].name;
+        }
+
+        char parent_path[MAX_FILENAME * 2];
+        snprintf(parent_path, sizeof(parent_path), "%s/%s", fs->current_directory, item_name);
+
+        if (strcmp(fs->inodes[i].name, parent_path) == 0) {
+            char modification_time[100];
+            strftime(modification_time, sizeof(modification_time), "%Y-%m-%d %H:%M:%S", localtime(&fs->inodes[i].modification_time));
+            printf("%s  %s  %s  %d  %s  %s  \n",fs->inodes[i].permissions, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, fs->inodes[i].name);
+            found = 1;
+            // Compter les fichiers et répertoires
+            if (!fs->inodes[i].is_directory) {
+                file_count++;
+            } else {
+                dir_count++;
+            }
+        }
+    }
+
+    if (!found) {
+        printf("Le répertoire est vide.\n");
+    } else {
+        printf("\nTotal : %d fichier(s), %d répertoire(s)\n", file_count, dir_count);
+    }
+}
+
 // Fonction pour afficher l'aide
 void help() {
     printf("Commandes disponibles :\n");
@@ -1155,6 +1194,8 @@ void help() {
     printf("  mvd <src> <dest>.............Renomme un répertoire.\n");
     printf("  mvf <src> <dest>.............Renomme un fichier.\n");
     printf("  free.........................Affiche les blocs libres.\n");
+    printf("  lsl..........................Liste le contenu du répertoire courant avec leur métadonnées.\n");
+
 }
 
 // Fonction principale du shell
@@ -1182,6 +1223,8 @@ void shell(Filesystem *fs, char *current_own) {
             delete_directory(fs, command + 6);
         } else if (strncmp(command, "cd ", 3) == 0) {
             change_directory(fs, command + 3);
+        } else if (strncmp(command, "lsl", 3) == 0) {
+            list_all_directory(fs);
         } else if (strncmp(command, "ls", 2) == 0) {
             list_directory(fs);
         } else if (strncmp(command, "touch ", 6) == 0) {
