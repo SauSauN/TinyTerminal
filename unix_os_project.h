@@ -10,6 +10,7 @@
 // Définition des constantes
 #define MAX_FILES 100          // Nombre maximal de fichiers
 #define MAX_FILENAME 50        // Taille maximale du nom de fichier
+#define MAX_DIRECTORY 50       // Taille maximale du nom de répertoire
 #define FILESYSTEM_FILE "my_filesystem.dat" // Nom du fichier contenant le système de fichiers
 #define NAME_SIZE 100          // Taille du nom
 #define PERM_SIZE 11           // Taille des permissions
@@ -18,6 +19,8 @@
 #define NUM_INODES 128         // Nombre total d'inodes
 #define GROUP_SIZE 10          // Taille de groupe par personne
 #define NUM_USER 20            // Nombre total d'utilisateurs
+#define FILE_SIZE 12           // Taille du fichier par défaut
+#define MAX_CONTENT 100        // Taille maximale du contenu
 
 // Variables globales
 extern char current_own[NAME_SIZE];  // Utilisateur actuel
@@ -102,6 +105,8 @@ void move_file(Filesystem *fs, const char *filename, const char *nomrepertoire);
 char* extract_path(const char* full_path);
 void copy_repertoire(Filesystem *fs, const char *repertoirenamedepart, const char *repertoirenamefinal, const char *nomrepertoire);
 void move_directory(Filesystem *fs, const char *repertoirename, const char *nomrepertoire);
+void rename_file(Filesystem *fs, const char *filenamedepart, const char *filenamefinal) 
+void rename_directory(Filesystem *fs, const char *repnamedepart, const char *repnamefinal)
 void clear_screen();
 void help();
 void shell(Filesystem *fs, char *current_own);

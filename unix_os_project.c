@@ -1,4 +1,5 @@
 #include "unix_os_project.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,7 @@
 // Définition des constantes
 #define MAX_FILES 100          // Nombre maximal de fichiers
 #define MAX_FILENAME 50        // Taille maximale du nom de fichier
+#define MAX_DIRECTORY 50       // Taille maximale du nom de répertoire
 #define FILESYSTEM_FILE "my_filesystem.dat" // Nom du fichier contenant le système de fichiers
 #define NAME_SIZE 100          // Taille du nom
 #define PERM_SIZE 11           // Taille des permissions
@@ -16,6 +18,8 @@
 #define NUM_INODES 128         // Nombre total d'inodes
 #define GROUP_SIZE 10          // Taille de groupe par personne
 #define NUM_USER 20            // Nombre total d'utilisateurs
+#define FILE_SIZE 12           // Taille du fichier par défaut
+#define MAX_CONTENT 100        // Taille maximale du contenu
 
 char current_own[NAME_SIZE];  // Utilisateur actuel
 char current_group[GROUP_SIZE];  // Utilisateur actuel
@@ -76,6 +80,8 @@ superblock sb;
 char block_data[NUM_BLOCKS][BLOCK_SIZE]; // Tableau pour stocker les données des fichiers
 file_entry file_table[NUM_INODES];      // Table des noms de fichiers
 
+void save_filesystem(Filesystem *fs);
+
 // Fonction pour créer un groupe
 void user_add_group(Filesystem *fs, const char *groupname) {
     if (groupname == NULL || strlen(groupname) == 0) {
@@ -100,7 +106,11 @@ void user_add_group(Filesystem *fs, const char *groupname) {
     // Vérifier si le groupe existe déjà pour l'utilisateur
     for (int j = 0; j < fs->group[user_index].taille; j++) {
         if (strcmp(fs->group[user_index].group[j].data, groupname) == 0) {
-            printf("Erreur : le groupe '%s' existe déjà pour l'utilisateur '%s'.\n", groupname, current_own);
+            printf("Le groupe '%s' existe déjà pour l'utilisateur '%s'.\n", groupname, current_own);
+            if (strlen(current_group) == 0) {
+                strncpy(current_group, groupname, strlen(groupname));
+                printf("Le groupe actuel est'%s'.\n", groupname);
+            }
             return;
         }
     }
@@ -1030,6 +1040,84 @@ void move_directory(Filesystem *fs, const char *repertoirename, const char *nomr
     printf("Répertoire '%s' déplacé vers '%s'.\n", full_path_source, full_path_dest);
 }
 
+// Fonction rénommer un fichier
+void rename_file(Filesystem *fs, const char *filenamedepart, const char *filenamefinal) {
+    char full_path_source[MAX_FILENAME * 2];
+    char full_path_dest[MAX_FILENAME * 2];
+
+    // Construire le chemin complet du fichier source
+    snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, filenamedepart);
+    // Construire le chemin complet du fichier source
+    snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", fs->current_directory, filenamefinal);
+
+    // Rechercher le fichier source dans les inodes
+    Inode *source_inode = NULL;
+    int index_inode = -1;
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && !fs->inodes[i].is_directory) {
+            source_inode = &fs->inodes[i];
+            index_inode = i;
+            break;
+        }
+    }
+
+    if (!source_inode) {
+        printf("Fichier source '%s' introuvable ou est un répertoire.\n", filenamedepart);
+        return;
+    }
+
+    // Vérifier si le fichier de destination existe déjà
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, full_path_dest) == 0 && !fs->inodes[i].is_directory) {
+            printf("Le fichier de destination '%s' existe déjà.\n", filenamefinal);
+            return;
+        }
+    }
+    strcpy(fs->inodes[index_inode].name, full_path_dest);
+    // Sauvegarder le système de fichiers
+    save_filesystem(fs);
+    printf("Fichier '%s' renommé en '%s'.\n", filenamedepart, filenamefinal);
+}
+
+// Fonction rénommer un répertoire
+void rename_directory(Filesystem *fs, const char *repnamedepart, const char *repnamefinal) {
+    char full_path_source[MAX_FILENAME * 2];
+    char full_path_dest[MAX_FILENAME * 2];
+
+    // Construire le chemin complet du fichier source
+    snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, repnamedepart);
+    // Construire le chemin complet du fichier source
+    snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", fs->current_directory, repnamefinal);
+
+    // Rechercher le fichier source dans les inodes
+    Inode *source_inode = NULL;
+    int index_inode = -1;
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && fs->inodes[i].is_directory) {
+            source_inode = &fs->inodes[i];
+            index_inode = i;
+            break;
+        }
+    }
+
+    if (!source_inode) {
+        printf("Répertoire source '%s' introuvable.\n", repnamedepart);
+        return;
+    }
+
+    // Vérifier si le fichier de destination existe déjà
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, full_path_dest) == 0 && fs->inodes[i].is_directory) {
+            printf("Le répertoire de destination '%s' existe déjà.\n", repnamefinal);
+            return;
+        }
+    }
+    strcpy(fs->inodes[index_inode].name, full_path_dest);
+    // Sauvegarder le système de fichiers
+    save_filesystem(fs);
+    printf("Répertoire '%s' renommé en '%s'.\n", repnamedepart, repnamefinal);
+}
+
 // Fonction pour effacer l'écran
 void clear_screen() {
     #ifdef _WIN32
@@ -1051,9 +1139,9 @@ void help() {
     printf("  mvdir <src> <rep>............Déplace un répertoire vers un répertoire.\n");
     printf("  cd <nom>.....................Change de répertoire.\n");
     printf("  ls...........................Liste le contenu du répertoire courant.\n");
-    printf("  touch <nom> <taille>.........Crée un fichier vide.\n");
-    printf("  statf <nom>...................Affiche les métadonnées d'un fichier.\n");
-    printf("  statd <nom>...................Affiche les métadonnées d'un répertoire.\n");
+    printf("  touch <nom>..................Crée un fichier vide.\n");
+    printf("  statf <nom>..................Affiche les métadonnées d'un fichier.\n");
+    printf("  statd <nom>..................Affiche les métadonnées d'un répertoire.\n");
     printf("  chmod <nom> <cible> <perm>...Modifie les permissions d'un fichier.\n");
     printf("  write <nom> <contenu>........Écrit du contenu dans un fichier.\n");
     printf("  cat <nom>....................Affiche le contenu d'un fichier.\n");
@@ -1064,6 +1152,9 @@ void help() {
     printf("  del <nom>....................Supprime un utilisateur du groupe.\n");
     printf("  clear........................Efface l'écran.\n");
     printf("  whoami.......................Affiche l'utilisateur actuel.\n");
+    printf("  mvd <src> <dest>.............Renomme un répertoire.\n");
+    printf("  mvf <src> <dest>.............Renomme un fichier.\n");
+    printf("  free.........................Affiche les blocs libres.\n");
 }
 
 // Fonction principale du shell
@@ -1095,7 +1186,7 @@ void shell(Filesystem *fs, char *current_own) {
             list_directory(fs);
         } else if (strncmp(command, "touch ", 6) == 0) {
             char filename[MAX_FILENAME];
-            int size = 12; // Taille par défaut
+            int size = FILE_SIZE; // Taille par défaut
             sscanf(command + 6, "%s", filename);
             create_file(fs, filename, size, current_own);
         } else if (strncmp(command, "statf ", 6) == 0) {
@@ -1110,7 +1201,7 @@ void shell(Filesystem *fs, char *current_own) {
             chmod_file(fs, filename, target, new_permissions);
         } else if (strncmp(command, "write ", 6) == 0) {
             char filename[MAX_FILENAME];
-            char content[MAX_FILENAME * 2];
+            char content[MAX_CONTENT * 2];
             sscanf(command + 6, "%s %[^\n]", filename, content);
             write_to_file(fs, filename, content);
         } else if (strncmp(command, "cat ", 4) == 0) {
@@ -1122,23 +1213,23 @@ void shell(Filesystem *fs, char *current_own) {
         } else if (strncmp(command, "cp ", 3) == 0) {
             char filenamedepart[MAX_FILENAME];
             char filenamefinal[MAX_FILENAME];
-            char repertoire[MAX_FILENAME];
+            char repertoire[MAX_DIRECTORY];
             sscanf(command + 3, "%s %s %s", filenamedepart, filenamefinal, repertoire);
             copy_file(fs, filenamedepart, filenamefinal, repertoire);
         } else if (strncmp(command, "mv ", 3) == 0) {
             char filename[MAX_FILENAME];
-            char nomrepertoire[MAX_FILENAME];
+            char nomrepertoire[MAX_DIRECTORY];
             sscanf(command + 3, "%s %s", filename, nomrepertoire);
             move_file(fs, filename, nomrepertoire);
         } else if (strncmp(command, "cpdir ", 6) == 0) {
-            char dirnamedepart[MAX_FILENAME];
-            char direnamefinal[MAX_FILENAME];
-            char repertoire[MAX_FILENAME];
+            char dirnamedepart[MAX_DIRECTORY];
+            char direnamefinal[MAX_DIRECTORY];
+            char repertoire[MAX_DIRECTORY];
             sscanf(command + 6, "%s %s %s", dirnamedepart, direnamefinal, repertoire);
             copy_repertoire(fs, dirnamedepart, direnamefinal, repertoire);
         } else if (strncmp(command, "mvdir ", 6) == 0) {
-            char repertoirename[MAX_FILENAME];
-            char nomrepertoire[MAX_FILENAME];
+            char repertoirename[MAX_DIRECTORY];
+            char nomrepertoire[MAX_DIRECTORY];
             sscanf(command + 6, "%s %s", repertoirename, nomrepertoire);
             move_directory(fs, repertoirename, nomrepertoire);
         } else if (strncmp(command, "free", 3) == 0) {
@@ -1151,6 +1242,16 @@ void shell(Filesystem *fs, char *current_own) {
             clear_screen(); 
         } else if (strncmp(command, "whoami", 6) == 0) {
             printf("Utilisateur actuel : %s\n", current_own); 
+        } else if (strncmp(command, "mvf", 3) == 0) {
+            char filenamedepart[MAX_FILENAME];
+            char filenamefinal[MAX_FILENAME];
+            sscanf(command + 4, "%s %s", filenamedepart, filenamefinal);
+            rename_file(fs,filenamedepart,filenamefinal); 
+        } else if (strncmp(command, "mvd", 3) == 0) {
+            char repnamedepart[MAX_DIRECTORY];
+            char repnamefinal[MAX_DIRECTORY];
+            sscanf(command + 4, "%s %s", repnamedepart, repnamefinal);
+            rename_directory(fs,repnamedepart,repnamefinal); 
         } else {
             printf("Commande inconnue !\n");
         }
@@ -1160,7 +1261,7 @@ void shell(Filesystem *fs, char *current_own) {
 // Fonction pour initialiser le système de fichiers
 void init_main(Filesystem *fs) {
     printf("\nEntrez votre nom: ");
-    if (scanf("%99s", current_own) != 1) { // Lire le nom de l'utilisateur
+    if (scanf("%99s", current_own) != 1 ) { // Lire le nom de l'utilisateur
         printf("Erreur lors de la lecture du nom.\n");
         exit(1); // Quitter en cas d'erreur
     }
@@ -1168,6 +1269,15 @@ void init_main(Filesystem *fs) {
     // Vider le buffer d'entrée après scanf
     int c;
     while ((c = getchar()) != '\n' && c != EOF);
+/*    
+*
+    if (strlen(current_own) ==0 ) { // Lire le nom de l'utilisateur
+        printf("Erreur lors de la lecture du nom.\n");
+        return; // Quitter en cas d'erreur
+    }
+*
+*
+*/  
 
     // Vérifier si l'utilisateur existe déjà dans la table des groupes
     int user_exists = 0;
@@ -1247,6 +1357,8 @@ int main() {
     Filesystem fs;
     init_filesystem(&fs); // Initialiser le système de fichiers  
     init_main(&fs);
+    // Vider le buffer d'entrée après scanf
+
     shell(&fs, current_own); // Lancer le shell
     return 0;
 }
