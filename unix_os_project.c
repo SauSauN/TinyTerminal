@@ -37,6 +37,7 @@ typedef struct {
     char permissions[PERM_SIZE];      // Permissions du fichier (ex: "-rwxr-xr--"),du reperdtoire (ex: "drwxr-xr--")
     int block_indices[NUM_BLOCKS];    // Indices des blocs alloués
     int block_count;                  // Nombre de blocs alloués
+    int num_liens;                    // Nombre de liens physiques
 } Inode;
 
 // Définition de la structure d'un tableau
@@ -243,6 +244,7 @@ void create_directory(Filesystem *fs, const char *dirname) {
     time_t now = time(NULL); // Récupère l'heure actuelle
     fs->inodes[fs->inode_count].creation_time = now;
     fs->inodes[fs->inode_count].modification_time = now;
+    fs->inodes[fs->inode_count].num_liens = 0;
     strncpy(fs->inodes[fs->inode_count].owner, current_own, strlen(current_own));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
     strncpy(fs->inodes[fs->inode_count].group, current_group, strlen(current_group));
@@ -336,6 +338,7 @@ void create_file(Filesystem *fs, const char *filename, size_t size, const char *
     time_t now = time(NULL); // Récupère l'heure actuelle
     fs->inodes[fs->inode_count].creation_time = now;
     fs->inodes[fs->inode_count].modification_time = now;
+    fs->inodes[fs->inode_count].num_liens = 0;
     strncpy(fs->inodes[fs->inode_count].owner, owner, strlen(owner));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
     strncpy(fs->inodes[fs->inode_count].group, current_group, strlen(current_group));
@@ -1148,7 +1151,7 @@ void list_all_directory(Filesystem *fs) {
         if (strcmp(fs->inodes[i].name, parent_path) == 0) {
             char modification_time[100];
             strftime(modification_time, sizeof(modification_time), "%Y-%m-%d %H:%M:%S", localtime(&fs->inodes[i].modification_time));
-            printf("%s  %s  %s  %d  %s  %s  \n",fs->inodes[i].permissions, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, fs->inodes[i].name);
+            printf("%s %i %s  %s  %d  %s  %s  \n",fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, fs->inodes[i].name);
             found = 1;
             // Compter les fichiers et répertoires
             if (!fs->inodes[i].is_directory) {
@@ -1399,9 +1402,7 @@ int main() {
     setlocale(LC_ALL, "en_US.UTF-8"); // Pour gérer les caractères spéciaux
     Filesystem fs;
     init_filesystem(&fs); // Initialiser le système de fichiers  
-    init_main(&fs);
-    // Vider le buffer d'entrée après scanf
-
+    init_main(&fs); // Initialiser le système
     shell(&fs, current_own); // Lancer le shell
     return 0;
 }
