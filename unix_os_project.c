@@ -1,5 +1,3 @@
-#include "unix_os_project.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,10 +18,17 @@
 #define NUM_USER 20            // Nombre total d'utilisateurs
 #define FILE_SIZE 12           // Taille du fichier par défaut
 #define MAX_CONTENT 100        // Taille maximale du contenu
+#define NUM_LIEN_MAX 10        // Nombre maximal de liens
 
 char current_own[NAME_SIZE];  // Utilisateur actuel
 char current_group[GROUP_SIZE];  // Utilisateur actuel
 char permissions[PERM_SIZE];  // Permissions par défaut
+
+// Structure représentant un lien symbolique ou physique
+typedef struct {
+    char hardLink[NUM_LIEN_MAX];      // Tableau de liens physiques
+    char symbolicLink[NUM_LIEN_MAX];  // Tableau de liens symboliques
+} Lien;
 
 // Structure représentant un inode (métadonnées d'un fichier ou répertoire)
 typedef struct {
@@ -38,6 +43,7 @@ typedef struct {
     int block_indices[NUM_BLOCKS];    // Indices des blocs alloués
     int block_count;                  // Nombre de blocs alloués
     int num_liens;                    // Nombre de liens physiques
+    Lien lien;                        // Lien symbolique et physique
 } Inode;
 
 // Définition de la structure d'un tableau
@@ -248,6 +254,12 @@ void create_directory(Filesystem *fs, const char *dirname) {
     strncpy(fs->inodes[fs->inode_count].owner, current_own, strlen(current_own));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
     strncpy(fs->inodes[fs->inode_count].group, current_group, strlen(current_group));
+    for (int i = 0; i < NUM_LIEN_MAX; i++) {
+        fs->inodes[fs->inode_count].lien.hardLink[i] = '\0'; // Initialiser les liens physiques a vide
+    }
+    for (int i = 0; i < NUM_LIEN_MAX; i++) {
+        fs->inodes[fs->inode_count].lien.symbolicLink[i] = '\0'; // Initialiser les liens symboliques a vide
+    }
 
     fs->inode_count++;
 
@@ -342,6 +354,13 @@ void create_file(Filesystem *fs, const char *filename, size_t size, const char *
     strncpy(fs->inodes[fs->inode_count].owner, owner, strlen(owner));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
     strncpy(fs->inodes[fs->inode_count].group, current_group, strlen(current_group));
+    
+    for (int i = 0; i < NUM_LIEN_MAX; i++) {
+        fs->inodes[fs->inode_count].lien.hardLink[i] = '\0'; // Initialiser les liens physiques a vide
+    }
+    for (int i = 0; i < NUM_LIEN_MAX; i++) {
+        fs->inodes[fs->inode_count].lien.symbolicLink[i] = '\0'; // Initialiser les liens symboliques a vide
+    }
 
     fs->inode_count++;
     
