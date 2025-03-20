@@ -3,6 +3,7 @@
 #include <string.h>
 #include <locale.h> // Pour setlocale (gestion des caractères spéciaux)
 #include <time.h>   // Pour la gestion du temps (création/modification des fichiers)
+//#include <pthread.h> // Pour les threads
 
 // Définition des constantes
 #define MAX_FILES 100          // Nombre maximal de fichiers
@@ -19,12 +20,6 @@
 #define FILE_SIZE 12           // Taille du fichier par défaut
 #define MAX_CONTENT 100        // Taille maximale du contenu
 #define NUM_LIEN_MAX 10        // Nombre maximal de liens
-
-char current_own[NAME_SIZE];  // Utilisateur actuel
-char current_group[GROUP_SIZE];  // Utilisateur actuel
-char permissions[PERM_SIZE];  // Permissions par défaut
-
-
 
 // Définition de la structure d'un tableau
 typedef struct{
@@ -88,6 +83,12 @@ typedef struct {
 superblock sb; 
 char block_data[NUM_BLOCKS][BLOCK_SIZE]; // Tableau pour stocker les données des fichiers
 file_entry file_table[NUM_INODES];      // Table des noms de fichiers
+
+char current_own[NAME_SIZE];  // Utilisateur actuel
+char current_group[GROUP_SIZE];  // Utilisateur actuel
+char permissions[PERM_SIZE];  // Permissions par défaut
+//pthread_mutex_t fs_mutex = PTHREAD_MUTEX_INITIALIZER; // Mutex pour la synchronisation
+
 
 void save_filesystem(Filesystem *fs);
 
@@ -235,8 +236,10 @@ void reset_filesystem(Filesystem *fs) {
 
 // Fonction pour créer un répertoire
 void create_directory(Filesystem *fs, const char *dirname) {
+    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex
     if (fs->inode_count >= MAX_FILES) {
         printf("Nombre maximum de fichiers atteint !\n");
+        //pthread_mutex_unlock(&fs_mutex); // Déverrouiller avant de retourner
         return;
     }
     strcpy(permissions, "drw-rw-r--"); // Permissions par défaut
@@ -273,6 +276,7 @@ void create_directory(Filesystem *fs, const char *dirname) {
 
     save_filesystem(fs);
     printf("Répertoire '%s' créé.\n", path);
+    //pthread_mutex_unlock(&fs_mutex); // Déverrouiller avant de retourner
 }
 
 // Fonction pour supprimer un répertoire
