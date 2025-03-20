@@ -28,7 +28,7 @@ char permissions[PERM_SIZE];  // Permissions par défaut
 
 // Définition de la structure d'un tableau
 typedef struct{
-    char data[50];  // Chaîne de caractères
+    char data[50];  // Tableau de chaîne de caractères
 } Tab;
 
 // Structure représentant un lien symbolique ou physique
@@ -259,12 +259,12 @@ void create_directory(Filesystem *fs, const char *dirname) {
 
     
     for (int i = 0; i < NUM_LIEN_MAX; i++) {
-        for (int j = 0; j < MAX_FILENAME; i++) {
+        for (int j = 0; j < MAX_FILENAME; j++) {
             fs->inodes[fs->inode_count].lien.hardLink[i].data[j] = '\0'; // Initialiser les liens physiques a vide
         }     
     }
     for (int i = 0; i < NUM_LIEN_MAX; i++) {
-        for (int j = 0; j < MAX_FILENAME; i++) {
+        for (int j = 0; j < MAX_FILENAME; j++) {
             fs->inodes[fs->inode_count].lien.symbolicLink[i].data[j] = '\0'; // Initialiser les liens physiques a vide
         }     
     }
@@ -364,12 +364,12 @@ void create_file(Filesystem *fs, const char *filename, size_t size, const char *
     strncpy(fs->inodes[fs->inode_count].group, current_group, strlen(current_group));
     
     for (int i = 0; i < NUM_LIEN_MAX; i++) {
-        for (int j = 0; j < MAX_FILENAME; i++) {
+        for (int j = 0; j < MAX_FILENAME; j++) {
             fs->inodes[fs->inode_count].lien.hardLink[i].data[j] = '\0'; // Initialiser les liens physiques a vide
         }     
     }
     for (int i = 0; i < NUM_LIEN_MAX; i++) {
-        for (int j = 0; j < MAX_FILENAME; i++) {
+        for (int j = 0; j < MAX_FILENAME; j++) {
             fs->inodes[fs->inode_count].lien.symbolicLink[i].data[j] = '\0'; // Initialiser les liens physiques a vide
         }     
     }
@@ -718,23 +718,28 @@ void copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamef
     // Construire le chemin complet du fichier source
     snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, filenamedepart);
 
-    // Vérifier si le nomrepertoire est un chemin complet ou un répertoire relatif
-    if (strchr(nomrepertoire, '/') != NULL) {
-        // C'est un chemin complet
-        if (!directory_exists(fs, nomrepertoire)) {
-            printf("Le répertoire '%s' n'existe pas.\n", nomrepertoire);
-            return;
+    if (nomrepertoire != NULL) {
+        // Vérifier si le nomrepertoire est un chemin complet ou un répertoire relatif
+        if (strchr(nomrepertoire, '/') != NULL) {
+            // C'est un chemin complet
+            if (!directory_exists(fs, nomrepertoire)) {
+                printf("Le répertoire '%s' n'existe pas.\n", nomrepertoire);
+                return;
+            }
+            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", nomrepertoire, filenamefinal);
+        } else {
+            // C'est un répertoire relatif au répertoire courant
+            snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, nomrepertoire);
+            if (!directory_exists(fs, dest_directory)) {
+                printf("Le répertoire '%s' n'existe pas dans le répertoire courant.\n", nomrepertoire);
+                return;
+            }
+            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s/%s", fs->current_directory, nomrepertoire, filenamefinal);
         }
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", nomrepertoire, filenamefinal);
     } else {
-        // C'est un répertoire relatif au répertoire courant
-        snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, nomrepertoire);
-        if (!directory_exists(fs, dest_directory)) {
-            printf("Le répertoire '%s' n'existe pas dans le répertoire courant.\n", nomrepertoire);
-            return;
-        }
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s/%s", fs->current_directory, nomrepertoire, filenamefinal);
+        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", fs->current_directory, filenamefinal);
     }
+    
 
     // Rechercher le fichier source dans les inodes
     Inode *source_inode = NULL;
@@ -773,6 +778,7 @@ void copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamef
     dest_inode->modification_time = time(NULL);
     strncpy(dest_inode->owner, source_inode->owner, MAX_FILENAME);
     strncpy(dest_inode->permissions, source_inode->permissions, 10);
+    strncpy(dest_inode->group, source_inode->group, GROUP_SIZE);
 
     // Allouer des blocs pour le fichier de destination
     dest_inode->block_count = 0;
@@ -917,22 +923,26 @@ void copy_repertoire(Filesystem *fs, const char *repertoirenamedepart, const cha
         return;
     }
 
-    // Vérifier si le nomrepertoire est un chemin complet ou un répertoire relatif
-    if (strchr(nomrepertoire, '/') != NULL) {
-        // C'est un chemin complet
-        if (!directory_exists(fs, nomrepertoire)) {
-            printf("Le répertoire '%s' n'existe pas.\n", nomrepertoire);
-            return;
+    if (nomrepertoire != NULL) {
+        // Vérifier si le nomrepertoire est un chemin complet ou un répertoire relatif
+        if (strchr(nomrepertoire, '/') != NULL) {
+            // C'est un chemin complet
+            if (!directory_exists(fs, nomrepertoire)) {
+                printf("Le répertoire '%s' n'existe pas.\n", nomrepertoire);
+                return;
+            }
+            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", nomrepertoire, repertoirenamefinal);
+        } else {
+            // C'est un répertoire relatif au répertoire courant
+            snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, nomrepertoire);
+            if (!directory_exists(fs, dest_directory)) {
+                printf("Le répertoire '%s' n'existe pas dans le répertoire courant.\n", nomrepertoire);
+                return;
+            }
+            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s/%s", fs->current_directory, nomrepertoire, repertoirenamefinal);
         }
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", nomrepertoire, repertoirenamefinal);
     } else {
-        // C'est un répertoire relatif au répertoire courant
-        snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, nomrepertoire);
-        if (!directory_exists(fs, dest_directory)) {
-            printf("Le répertoire '%s' n'existe pas dans le répertoire courant.\n", nomrepertoire);
-            return;
-        }
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s/%s", fs->current_directory, nomrepertoire, repertoirenamefinal);
+        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", fs->current_directory, repertoirenamefinal);
     }
 
     // Vérifier si le répertoire de destination existe déjà
@@ -958,6 +968,7 @@ void copy_repertoire(Filesystem *fs, const char *repertoirenamedepart, const cha
     dest_inode->modification_time = time(NULL);
     strncpy(dest_inode->owner, source_inode->owner, MAX_FILENAME);
     strncpy(dest_inode->permissions, source_inode->permissions, 10);
+    strncpy(dest_inode->group, source_inode->group, GROUP_SIZE);
 
     // Incrémenter le nombre d'inodes
     fs->inode_count++;
@@ -1203,32 +1214,32 @@ void list_all_directory(Filesystem *fs) {
 // Fonction pour afficher l'aide
 void help() {
     printf("Commandes disponibles :\n");
-    printf("  help.........................Affiche cette aide.\n");
-    printf("  exit.........................Quitte le shell.\n");
-    printf("  pwd..........................Affiche le répertoire courant.\n");
-    printf("  mkdir <nom>..................Crée un répertoire.\n");
-    printf("  rmdir <nom>..................Supprime un répertoire.\n");
-    printf("  cpdir <src> <dest> <rep>.....Copie un répertoire vers un répertoire.\n");
-    printf("  mvdir <src> <rep>............Déplace un répertoire vers un répertoire.\n");
-    printf("  cd <nom>.....................Change de répertoire.\n");
-    printf("  ls...........................Liste le contenu du répertoire courant.\n");
-    printf("  touch <nom>..................Crée un fichier vide.\n");
-    printf("  statf <nom>..................Affiche les métadonnées d'un fichier.\n");
-    printf("  statd <nom>..................Affiche les métadonnées d'un répertoire.\n");
-    printf("  chmod <nom> <cible> <perm>...Modifie les permissions d'un fichier.\n");
-    printf("  write <nom> <contenu>........Écrit du contenu dans un fichier.\n");
-    printf("  cat <nom>....................Affiche le contenu d'un fichier.\n");
-    printf("  cp <src> <dest> <rep>........Copie un fichier vers un répertoire.\n");
-    printf("  mv <src> <rep>...............Déplace un fichier vers un répertoire.\n");
-    printf("  reset........................Réinitialise le système de fichiers.\n");
-    printf("  add <nom>....................Ajoute un utilisateur au groupe.\n");
-    printf("  del <nom>....................Supprime un utilisateur du groupe.\n");
-    printf("  clear........................Efface l'écran.\n");
-    printf("  whoami.......................Affiche l'utilisateur actuel.\n");
-    printf("  mvd <src> <dest>.............Renomme un répertoire.\n");
-    printf("  mvf <src> <dest>.............Renomme un fichier.\n");
-    printf("  free.........................Affiche les blocs libres.\n");
-    printf("  lsl..........................Liste le contenu du répertoire courant avec leur métadonnées.\n");
+    printf("  help................................Affiche cette aide.\n");
+    printf("  exit................................Quitte le shell.\n");
+    printf("  pwd.................................Affiche le répertoire courant.\n");
+    printf("  mkdir <nom>.........................Crée un répertoire.\n");
+    printf("  rmdir <nom>.........................Supprime un répertoire.\n");
+    printf("  cpdir <src> <dest> [répertoire].....Copie un répertoire vers un répertoire.\n");
+    printf("  mvdir <src> <rep>...................Déplace un répertoire vers un répertoire.\n");
+    printf("  cd <nom>............................Change de répertoire.\n");
+    printf("  ls..................................Liste le contenu du répertoire courant.\n");
+    printf("  touch <nom>.........................Crée un fichier vide.\n");
+    printf("  statf <nom>.........................Affiche les métadonnées d'un fichier.\n");
+    printf("  statd <nom>.........................Affiche les métadonnées d'un répertoire.\n");
+    printf("  chmod <nom> <cible> <perm>..........Modifie les permissions d'un fichier.\n");
+    printf("  write <nom> <contenu>...............Écrit du contenu dans un fichier.\n");
+    printf("  cat <nom>...........................Affiche le contenu d'un fichier.\n");
+    printf("  cp <src> <dest> [répertoire]........Copie un fichier vers un répertoire.\n");
+    printf("  mv <src> <rep>......................Déplace un fichier vers un répertoire.\n");
+    printf("  reset...............................Réinitialise le système de fichiers.\n");
+    printf("  add <nom>...........................Ajoute un utilisateur au groupe.\n");
+    printf("  del <nom>...........................Supprime un utilisateur du groupe.\n");
+    printf("  clear...............................Efface l'écran.\n");
+    printf("  whoami..............................Affiche l'utilisateur actuel.\n");
+    printf("  mvd <src> <dest>....................Renomme un répertoire.\n");
+    printf("  mvf <src> <dest>....................Renomme un fichier.\n");
+    printf("  free................................Affiche les blocs libres.\n");
+    printf("  lsl.................................Liste le contenu du répertoire courant avec leur métadonnées.\n");
 
 }
 
@@ -1237,7 +1248,6 @@ void shell(Filesystem *fs, char *current_own) {
     char command[100];
 
     printf("\nBienvenue dans le système de fichiers %s!\n", current_own);
-    printf("Répertoire actuel: %s\n", fs->current_directory);
 
     while (current_own) {
         printf("\n%s> ", fs->current_directory);
@@ -1251,60 +1261,96 @@ void shell(Filesystem *fs, char *current_own) {
             help();
         } else if (strncmp(command, "pwd", 3) == 0) {
             printf("%s\n", fs->current_directory);
-        } else if (strncmp(command, "mkdir ", 6) == 0) {
+        } else if (strncmp(command, "mkdir", 6) == 0) {
             create_directory(fs, command + 6);
-        } else if (strncmp(command, "rmdir ", 6) == 0) {
+        } else if (strncmp(command, "rmdir", 6) == 0) {
             delete_directory(fs, command + 6);
-        } else if (strncmp(command, "cd ", 3) == 0) {
+        } else if (strncmp(command, "cd", 3) == 0) {
             change_directory(fs, command + 3);
         } else if (strncmp(command, "lsl", 3) == 0) {
             list_all_directory(fs);
         } else if (strncmp(command, "ls", 2) == 0) {
             list_directory(fs);
-        } else if (strncmp(command, "touch ", 6) == 0) {
+        } else if (strncmp(command, "touch", 6) == 0) {
             char filename[MAX_FILENAME];
             int size = FILE_SIZE; // Taille par défaut
             sscanf(command + 6, "%s", filename);
             create_file(fs, filename, size, current_own);
-        } else if (strncmp(command, "statf ", 6) == 0) {
+        } else if (strncmp(command, "statf", 6) == 0) {
             show_file_metadata(fs, command + 6);
-        } else if (strncmp(command, "statd ", 6) == 0) {
+        } else if (strncmp(command, "statd", 6) == 0) {
             show_directory_metadata(fs, command + 6);
-        } else if (strncmp(command, "chmod ", 6) == 0) {
+        } else if (strncmp(command, "chmod", 6) == 0) {
             char filename[MAX_FILENAME];
             char target[10];
             char new_permissions[4];
             sscanf(command + 6, "%s %s %s", filename, target, new_permissions);
             chmod_file(fs, filename, target, new_permissions);
-        } else if (strncmp(command, "write ", 6) == 0) {
+        } else if (strncmp(command, "write", 6) == 0) {
             char filename[MAX_FILENAME];
             char content[MAX_CONTENT * 2];
             sscanf(command + 6, "%s %[^\n]", filename, content);
             write_to_file(fs, filename, content);
-        } else if (strncmp(command, "cat ", 4) == 0) {
+        } else if (strncmp(command, "cat", 4) == 0) {
             read_file(fs, command + 4);
         } else if (strncmp(command, "reset", 5) == 0) {
             reset_filesystem(fs);
-        } else if (strncmp(command, "rm ", 3) == 0) {
+        } else if (strncmp(command, "rm", 3) == 0) {
             delete_file(fs, command + 3);
-        } else if (strncmp(command, "cp ", 3) == 0) {
+        } else if (strncmp(command, "cp", 3) == 0) {
             char filenamedepart[MAX_FILENAME];
             char filenamefinal[MAX_FILENAME];
             char repertoire[MAX_DIRECTORY];
-            sscanf(command + 3, "%s %s %s", filenamedepart, filenamefinal, repertoire);
-            copy_file(fs, filenamedepart, filenamefinal, repertoire);
-        } else if (strncmp(command, "mv ", 3) == 0) {
+
+            // Initialiser les variables à des chaînes vides pour éviter les erreurs
+            filenamedepart[0] = '\0';
+            filenamefinal[0] = '\0';
+            repertoire[0] = '\0';
+        
+            int count = sscanf(command + 3, "%s %s %s", filenamedepart, filenamefinal, repertoire);
+        
+            // Vérifier si toutes les valeurs ont été correctement lues
+            if (count < 2) { 
+                printf("Erreur : commande incorrecte. Format attendu : cp <source> <destination> [répertoire]\n");
+                return;
+            }
+        
+            // Vérifier si le répertoire a été fourni ou non
+            if (count < 3 || strlen(repertoire) == 0) {
+                copy_file(fs, filenamedepart, filenamefinal, NULL); 
+            } else {
+                copy_file(fs, filenamedepart, filenamefinal, repertoire);
+            }
+        } else if (strncmp(command, "mv", 3) == 0) {
             char filename[MAX_FILENAME];
             char nomrepertoire[MAX_DIRECTORY];
             sscanf(command + 3, "%s %s", filename, nomrepertoire);
             move_file(fs, filename, nomrepertoire);
-        } else if (strncmp(command, "cpdir ", 6) == 0) {
+        } else if (strncmp(command, "cpdir", 6) == 0) {
             char dirnamedepart[MAX_DIRECTORY];
             char direnamefinal[MAX_DIRECTORY];
             char repertoire[MAX_DIRECTORY];
-            sscanf(command + 6, "%s %s %s", dirnamedepart, direnamefinal, repertoire);
-            copy_repertoire(fs, dirnamedepart, direnamefinal, repertoire);
-        } else if (strncmp(command, "mvdir ", 6) == 0) {
+
+            // Initialiser les variables à des chaînes vides pour éviter les erreurs
+            dirnamedepart[0] = '\0';
+            direnamefinal[0] = '\0';
+            repertoire[0] = '\0';
+        
+            int count = sscanf(command + 6, "%s %s %s", dirnamedepart, direnamefinal, repertoire);
+        
+            // Vérifier si toutes les valeurs ont été correctement lues
+            if (count < 2) { 
+                printf("Erreur : commande incorrecte. Format attendu : cpdir <source> <destination> [répertoire]\n");
+                return;
+            }
+        
+            // Vérifier si le répertoire a été fourni ou non
+            if (count < 3 || strlen(repertoire) == 0) {
+                copy_repertoire(fs, dirnamedepart, direnamefinal, NULL);
+            } else {
+                copy_repertoire(fs, dirnamedepart, direnamefinal, repertoire);
+            }
+        } else if (strncmp(command, "mvdir", 6) == 0) {
             char repertoirename[MAX_DIRECTORY];
             char nomrepertoire[MAX_DIRECTORY];
             sscanf(command + 6, "%s %s", repertoirename, nomrepertoire);
