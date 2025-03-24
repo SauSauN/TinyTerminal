@@ -1265,24 +1265,24 @@ void shell(Filesystem *fs, char *current_own) {
             help();
         } else if (strncmp(command, "pwd", 3) == 0) {
             printf("%s\n", fs->current_directory);
-        } else if (strncmp(command, "mkdir", 6) == 0) {
+        } else if (strncmp(command, "mkdir", 5) == 0) {
             create_directory(fs, command + 6);
-        } else if (strncmp(command, "rmdir", 6) == 0) {
+        } else if (strncmp(command, "rmdir", 5) == 0) {
             delete_directory(fs, command + 6);
-        } else if (strncmp(command, "cd", 3) == 0) {
+        } else if (strncmp(command, "cd", 2) == 0) {
             change_directory(fs, command + 3);
         } else if (strncmp(command, "lsl", 3) == 0) {
             list_all_directory(fs);
         } else if (strncmp(command, "ls", 2) == 0) {
             list_directory(fs);
-        } else if (strncmp(command, "touch", 6) == 0) {
+        } else if (strncmp(command, "touch", 5) == 0) {
             char filename[MAX_FILENAME];
             int size = FILE_SIZE; // Taille par défaut
             sscanf(command + 6, "%s", filename);
             create_file(fs, filename, size, current_own);
-        } else if (strncmp(command, "statf", 6) == 0) {
+        } else if (strncmp(command, "statf", 5) == 0) {
             show_file_metadata(fs, command + 6);
-        } else if (strncmp(command, "statd", 6) == 0) {
+        } else if (strncmp(command, "statd", 5) == 0) {
             show_directory_metadata(fs, command + 6);
         } else if (strncmp(command, "chmod", 6) == 0) {
             char filename[MAX_FILENAME];
@@ -1290,18 +1290,18 @@ void shell(Filesystem *fs, char *current_own) {
             char new_permissions[4];
             sscanf(command + 6, "%s %s %s", filename, target, new_permissions);
             chmod_file(fs, filename, target, new_permissions);
-        } else if (strncmp(command, "write", 6) == 0) {
+        } else if (strncmp(command, "write", 5) == 0) {
             char filename[MAX_FILENAME];
             char content[MAX_CONTENT * 2];
             sscanf(command + 6, "%s %[^\n]", filename, content);
             write_to_file(fs, filename, content);
-        } else if (strncmp(command, "cat", 4) == 0) {
+        } else if (strncmp(command, "cat", 3) == 0) {
             read_file(fs, command + 4);
         } else if (strncmp(command, "reset", 5) == 0) {
             reset_filesystem(fs);
-        } else if (strncmp(command, "rm", 3) == 0) {
+        } else if (strncmp(command, "rm", 2) == 0) {
             delete_file(fs, command + 3);
-        } else if (strncmp(command, "cp", 3) == 0) {
+        } else if (strncmp(command, "cp", 2) == 0) {
             char filenamedepart[MAX_FILENAME];
             char filenamefinal[MAX_FILENAME];
             char repertoire[MAX_DIRECTORY];
@@ -1325,12 +1325,12 @@ void shell(Filesystem *fs, char *current_own) {
             } else {
                 copy_file(fs, filenamedepart, filenamefinal, repertoire);
             }
-        } else if (strncmp(command, "mv", 3) == 0) {
+        } else if (strncmp(command, "mv", 2) == 0) {
             char filename[MAX_FILENAME];
             char nomrepertoire[MAX_DIRECTORY];
             sscanf(command + 3, "%s %s", filename, nomrepertoire);
             move_file(fs, filename, nomrepertoire);
-        } else if (strncmp(command, "cpdir", 6) == 0) {
+        } else if (strncmp(command, "cpdir", 5) == 0) {
             char dirnamedepart[MAX_DIRECTORY];
             char direnamefinal[MAX_DIRECTORY];
             char repertoire[MAX_DIRECTORY];
@@ -1354,7 +1354,7 @@ void shell(Filesystem *fs, char *current_own) {
             } else {
                 copy_repertoire(fs, dirnamedepart, direnamefinal, repertoire);
             }
-        } else if (strncmp(command, "mvdir", 6) == 0) {
+        } else if (strncmp(command, "mvdir", 5) == 0) {
             char repertoirename[MAX_DIRECTORY];
             char nomrepertoire[MAX_DIRECTORY];
             sscanf(command + 6, "%s %s", repertoirename, nomrepertoire);
@@ -1388,23 +1388,21 @@ void shell(Filesystem *fs, char *current_own) {
 // Fonction pour initialiser le système de fichiers
 void init_main(Filesystem *fs) {
     printf("\nEntrez votre nom: ");
-    if (scanf("%99s", current_own) != 1 ) { // Lire le nom de l'utilisateur
-        printf("Erreur lors de la lecture du nom.\n");
-        exit(1); // Quitter en cas d'erreur
-    }
 
-    // Vider le buffer d'entrée après scanf
-    int c;
-    while ((c = getchar()) != '\n' && c != EOF);
-/*    
-*
-    if (strlen(current_own) ==0 ) { // Lire le nom de l'utilisateur
+    // Utiliser fgets pour lire l'entrée
+    if (fgets(current_own, NAME_SIZE, stdin) != NULL) {
+        // Supprimer le saut de ligne (\n) à la fin de la chaîne
+        current_own[strcspn(current_own, "\n")] = '\0';
+
+        // Vérifier si la chaîne est vide
+        if (strlen(current_own) == 0) {
+            printf("Erreur : le nom d'utilisateur ne peut pas être vide.\n");
+            exit(1);
+        }
+    } else {
         printf("Erreur lors de la lecture du nom.\n");
-        return; // Quitter en cas d'erreur
+        exit(1);
     }
-*
-*
-*/  
 
     // Vérifier si l'utilisateur existe déjà dans la table des groupes
     int user_exists = 0;
@@ -1477,7 +1475,6 @@ void init_main(Filesystem *fs) {
         printf("Aucun groupe disponible pour l'utilisateur '%s'. Vous pourrez en ajouter plus tard.\n", current_own);
     }
 }
-
 // Fonction principale
 int main() {
     setlocale(LC_ALL, "en_US.UTF-8"); // Pour gérer les caractères spéciaux
