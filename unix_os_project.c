@@ -1244,6 +1244,7 @@ void help() {
     printf("  mvf <src> <dest>....................Renomme un fichier.\n");
     printf("  free................................Affiche les blocs libres.\n");
     printf("  lsl.................................Liste le contenu du répertoire courant avec leur métadonnées.\n");
+    printf("  rm <nom>............................Supprime un fichier.\n");
 
 }
 
