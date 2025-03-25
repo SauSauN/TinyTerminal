@@ -1215,6 +1215,87 @@ void list_all_directory(Filesystem *fs) {
     }
 }
 
+// Fonction pour afficher l'utilisateur actuel
+void list_user_groups(Filesystem *fs) {
+    printf("Groupes de l'utilisateur '%s':\n", current_own);
+    
+    // Trouver l'utilisateur dans la table des groupes
+    int user_found = 0;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, current_own) == 0) {
+            user_found = 1;
+            if (fs->group[i].taille == 0) {
+                printf("Aucun groupe disponible.\n");
+            } else {
+                for (int j = 0; j < fs->group[i].taille; j++) {
+                    printf("- %s", fs->group[i].group[j].data);
+                    if (strcmp(fs->group[i].group[j].data, current_group) == 0) {
+                        printf(" (groupe actuel)");
+                    }
+                    printf("\n");
+                }
+            }
+            break;
+        }
+    }
+    
+    if (!user_found) {
+        printf("Erreur: utilisateur introuvable dans la table des groupes.\n");
+    }
+}
+
+// Fonction pour changer de groupe
+void change_group(Filesystem *fs, const char *groupname) {
+    // Vérifier si le groupe est vide
+    if (groupname == NULL || strlen(groupname) == 0) {
+        printf("Erreur : nom de groupe invalide.\n");
+        return;
+    }
+
+    // Trouver l'utilisateur actuel dans la table des groupes
+    int user_index = -1;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, current_own) == 0) {
+            user_index = i;
+            break;
+        }
+    }
+
+    if (user_index == -1) {
+        printf("Erreur : utilisateur '%s' introuvable.\n", current_own);
+        return;
+    }
+
+    // Vérifier si le groupe existe pour cet utilisateur
+    int group_found = 0;
+    for (int j = 0; j < fs->group[user_index].taille; j++) {
+        if (strcmp(fs->group[user_index].group[j].data, groupname) == 0) {
+            group_found = 1;
+            break;
+        }
+    }
+
+    if (!group_found) {
+        printf("Erreur : le groupe '%s' n'existe pas pour l'utilisateur '%s'.\n", 
+               groupname, current_own);
+        return;
+    }
+
+    // Changer le groupe actuel
+    strncpy(current_group, groupname, GROUP_SIZE);
+    printf("Groupe actuel changé pour '%s'.\n", groupname);
+    save_filesystem(fs);
+}
+
+// Fonction pour afficher le groupe actuel
+void show_current_group() {
+    if (strlen(current_group) == 0) {
+        printf("Aucun groupe n'est actuellement sélectionné.\n");
+    } else {
+        printf("Groupe actuel: %s\n", current_group);
+    }
+}
+
 // Fonction pour afficher l'aide
 void help() {
     printf("Commandes disponibles :\n");
@@ -1245,6 +1326,9 @@ void help() {
     printf("  free................................Affiche les blocs libres.\n");
     printf("  lsl.................................Liste le contenu du répertoire courant avec leur métadonnées.\n");
     printf("  rm <nom>............................Supprime un fichier.\n");
+    printf("  lsgroups............................Affiche les groupes de l'utilisateur.\n");
+    printf("  chgroup <nom>.......................Change le groupe de l'utilisateur.\n");
+    printf("  curgroup............................Affiche le groupe actuel.\n");
 
 }
 
@@ -1261,6 +1345,7 @@ void shell(Filesystem *fs, char *current_own) {
 
         if (strncmp(command, "exit", 4) == 0) {
             printf("Arrêt du système de fichiers.\n");
+            strcpy(fs->current_directory, "/home");
             break;
         } else if (strncmp(command, "help", 4) == 0) {
             help();
@@ -1272,6 +1357,8 @@ void shell(Filesystem *fs, char *current_own) {
             delete_directory(fs, command + 6);
         } else if (strncmp(command, "cd", 2) == 0) {
             change_directory(fs, command + 3);
+        } else if (strncmp(command, "lsgroups", 8) == 0) {
+            list_user_groups(fs);
         } else if (strncmp(command, "lsl", 3) == 0) {
             list_all_directory(fs);
         } else if (strncmp(command, "ls", 2) == 0) {
@@ -1380,6 +1467,10 @@ void shell(Filesystem *fs, char *current_own) {
             char repnamefinal[MAX_DIRECTORY];
             sscanf(command + 4, "%s %s", repnamedepart, repnamefinal);
             rename_directory(fs,repnamedepart,repnamefinal); 
+        } else if (strncmp(command, "chgroup", 7) == 0) {
+            change_group(fs, command + 8);
+        } else if (strncmp(command, "curgroup", 12) == 0) {
+            show_current_group();
         } else {
             printf("Commande inconnue !\n");
         }
@@ -1407,11 +1498,11 @@ void init_main(Filesystem *fs) {
 
     // Vérifier si l'utilisateur existe déjà dans la table des groupes
     int user_exists = 0;
-    int user_index = -1; // Pour stocker l'index de l'utilisateur dans la table des groupes
+    int good = 0; // Pour vérifier si l'utilisateur a été trouvé ou créé
+
     for (int i = 0; i < NUM_USER; i++) {
         if (strcmp(fs->group[i].user, current_own) == 0) {
             user_exists = 1; // L'utilisateur existe
-            user_index = i;  // Stocker l'index de l'utilisateur
             break;
         }
     }
@@ -1426,8 +1517,13 @@ void init_main(Filesystem *fs) {
                 fs->group[i].taille = 0; // Initialiser le nombre de groupes à 0
                 memset(current_group, 0, sizeof(current_group)); // Initialiser current_group à une chaîne vide
                 found_free_slot = 1;
-                user_index = i; // Stocker l'index du nouvel utilisateur
                 printf("Nouvel utilisateur '%s' créé.\n", current_own);
+                const char* home_directory = "/home";
+                // Construire le chemin complet du répertoire source
+                snprintf(fs->current_directory, sizeof(fs->current_directory), "%s", home_directory);
+                create_directory(fs,current_own); 
+                good = 1;       
+
                 save_filesystem(fs); // Sauvegarder le système de fichiers
                 break;
             }
@@ -1440,42 +1536,15 @@ void init_main(Filesystem *fs) {
         printf("Utilisateur '%s' trouvé.\n", current_own);
     }
 
-    // Si l'utilisateur a des groupes, lui demander de choisir un groupe
-    if (user_index != -1 && fs->group[user_index].taille > 0) {
-        printf("Groupes disponibles pour '%s':\n", current_own);
-        for (int j = 0; j < fs->group[user_index].taille; j++) {
-            printf("- %s\n", fs->group[user_index].group[j].data);
-        }
-
-        // Demander à l'utilisateur de choisir un groupe
-        printf("\nEntrez votre groupe (ou appuyez sur Entrée pour passer): ");
-        char input[GROUP_SIZE];
-        if (fgets(input, sizeof(input), stdin) != NULL) {
-            input[strcspn(input, "\n")] = 0; // Supprimer le saut de ligne
-            if (strlen(input) > 0) { // Si l'utilisateur a entré un groupe
-                // Vérifier si le groupe existe
-                int group_exists = 0;
-                for (int j = 0; j < fs->group[user_index].taille; j++) {
-                    if (strcmp(fs->group[user_index].group[j].data, input) == 0) {
-                        group_exists = 1;
-                        strncpy(current_group, input, GROUP_SIZE); // Définir le groupe actuel
-                        break;
-                    }
-                }
-
-                if (!group_exists) {
-                    printf("Erreur : le groupe '%s' n'existe pas.\n", input);
-                } else {
-                    printf("Groupe '%s' sélectionné.\n", current_group);
-                }
-            } else {
-                printf("Aucun groupe sélectionné. Vous pourrez en ajouter plus tard.\n");
-            }
-        }
-    } else {
-        printf("Aucun groupe disponible pour l'utilisateur '%s'. Vous pourrez en ajouter plus tard.\n", current_own);
-    }
+    if (good) {
+        // Construire le chemin complet du répertoire source
+        char temp_path[MAX_FILENAME]; // Utilisez une taille appropriée
+        strncpy(temp_path,fs->current_directory,  sizeof(fs->current_directory));
+        snprintf(fs->current_directory, sizeof(temp_path)+sizeof(current_own), "%s/%s", temp_path, current_own);
+    } 
 }
+
+
 // Fonction principale
 int main() {
     setlocale(LC_ALL, "en_US.UTF-8"); // Pour gérer les caractères spéciaux
