@@ -94,6 +94,7 @@ char permissions[PERM_SIZE];  // Permissions par défaut
 
 void save_filesystem(Filesystem *fs);
 void create_directory(Filesystem *fs, const char *dirname);
+void user_add_group(Filesystem *fs, const char *groupname);
 
 // Fonction pour créer un groupe dans ./user/groups s'il n'existe pas
 void create_group_directory(Filesystem *fs, const char *groupname) {
@@ -118,6 +119,7 @@ void create_group_directory(Filesystem *fs, const char *groupname) {
 
     // Restaurer le répertoire courant
     strcpy(fs->current_directory, current_dir_backup);
+    user_add_group(fs,groupname);
 
     printf("Répertoire du groupe '%s' créé dans ./users/groups\n", groupname);
 }
@@ -337,11 +339,42 @@ void delete_directory(Filesystem *fs, const char *dirname) {
     printf("Répertoire '%s' introuvable !\n", path);
 }
 
+// Fonction pour vérifier si un utilisateur appartient à un groupe
+int is_user_in_group(Filesystem *fs, const char *username, const char *groupname) {
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, username) == 0) {
+            for (int j = 0; j < fs->group[i].taille; j++) {
+                if (strcmp(fs->group[i].group[j].data, groupname) == 0) {
+                    return 1; // L'utilisateur est dans le groupe
+                }
+            }
+            break;
+        }
+    }
+    return 0; // L'utilisateur n'est pas dans le groupe
+}
+
 // Fonction pour changer de répertoire
 void change_directory(Filesystem *fs, const char *dirname) {
+    // Vérification de l'accès au répertoire home privé
+    if (strcmp(fs->current_directory, "./users/home") == 0) {
+        if (strcmp(dirname, "..") != 0 && strcmp(dirname, current_own) != 0) {
+            printf("Accès refusé : %s est un répertoire privé!\n", dirname);
+            return;
+        }
+    }
+    
+    // Vérification de l'accès au groupe privé
+    if (strcmp(fs->current_directory, "./users/groups") == 0) {
+        if (strcmp(dirname, "..") != 0 && !is_user_in_group(fs, current_own, dirname)) {
+            printf("Accès refusé : %s est un groupe privé ou vous n'en faites pas partie!\n", dirname);
+            return;
+        }
+    }
+
     if (strcmp(dirname, "..") == 0) {
-        if (strcmp(fs->current_directory, "/home") == 0) {
-            printf("Vous êtes déjà dans /home.\n");
+        if (strcmp(fs->current_directory, "./") == 0) {
+            printf("Vous êtes déjà dans le root.\n");
             return;
         }
         char *last_slash = strrchr(fs->current_directory, '/');
@@ -350,7 +383,7 @@ void change_directory(Filesystem *fs, const char *dirname) {
         }
         printf("Déplacé dans '%s'.\n", fs->current_directory);
         return;
-    }
+    } 
 
     char path[MAX_FILENAME * 2];
     snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
@@ -1558,7 +1591,7 @@ void init_main(Filesystem *fs) {
                 printf("Nouvel utilisateur '%s' créé.\n", current_own);        
                 create_directory(fs,current_own); 
                 good = 1;       
-
+                delete_directory(fs, current_own);
                 save_filesystem(fs); // Sauvegarder le système de fichiers
                 break;
             }
@@ -1580,6 +1613,7 @@ void init_main(Filesystem *fs) {
         // Mettre à jour le chemin courant
         snprintf(fs->current_directory, MAX_FILENAME*2, "./users/home/%s", current_own);
         strncpy(current_group, current_own, sizeof(current_group));  
+        
     }
 }
 
