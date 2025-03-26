@@ -316,7 +316,7 @@ void create_directory(Filesystem *fs, const char *dirname) {
     fs->inode_count++;
 
     save_filesystem(fs);
-    printf("Répertoire '%s' créé.\n", path);
+    //printf("Répertoire '%s' créé.\n", path);
     //pthread_mutex_unlock(&fs_mutex); // Déverrouiller avant de retourner
 }
 
