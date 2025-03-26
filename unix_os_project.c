@@ -10,7 +10,7 @@
 #define MAX_FILENAME 50        // Taille maximale du nom de fichier
 #define MAX_DIRECTORY 50       // Taille maximale du nom de répertoire
 #define FILESYSTEM_FILE "my_filesystem.dat" // Nom du fichier contenant le système de fichiers
-#define NAME_SIZE 100          // Taille du nom
+#define NAME_SIZE 10          // Taille du nom
 #define PERM_SIZE 11           // Taille des permissions
 #define BLOCK_SIZE 512         // Taille d'un bloc de données
 #define NUM_BLOCKS 1024        // Nombre total de blocs
@@ -20,6 +20,8 @@
 #define FILE_SIZE 12           // Taille du fichier par défaut
 #define MAX_CONTENT 100        // Taille maximale du contenu
 #define NUM_LIEN_MAX 10        // Nombre maximal de liens
+#define MAX_PATH 50           // Taille maximale du chemin
+#define GROUP_FILE "./users/groups" //
 
 // Définition de la structure d'un tableau
 typedef struct{
@@ -70,7 +72,7 @@ typedef struct {
     User_Group group[NUM_USER]; // Table des groupe
     int inode_count;              // Nombre d'inodes utilisés
     int group_count;              // Nombre de groupes utilisés
-    char current_directory[MAX_FILENAME]; // Répertoire actuel
+    char current_directory[MAX_PATH]; // Répertoire actuel
 } Filesystem;
 
 // Structure pour associer un nom de fichier à un inode
@@ -91,12 +93,45 @@ char permissions[PERM_SIZE];  // Permissions par défaut
 
 
 void save_filesystem(Filesystem *fs);
+void create_directory(Filesystem *fs, const char *dirname);
+
+// Fonction pour créer un groupe dans ./user/groups s'il n'existe pas
+void create_group_directory(Filesystem *fs, const char *groupname) {
+    char group_path[MAX_FILENAME * 2];
+    snprintf(group_path, sizeof(group_path), "./users/groups/%s", groupname);
+
+    // Vérifier si le répertoire du groupe existe déjà
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, group_path) == 0 && fs->inodes[i].is_directory) {
+            printf("Le répertoire du groupe '%s' existe déjà.\n", groupname);
+            return;
+        }
+    }
+
+    // Sauvegarder le répertoire courant
+    char current_dir_backup[MAX_PATH];
+    strcpy(current_dir_backup, fs->current_directory);
+
+    // Créer le répertoire du groupe
+    strcpy(fs->current_directory, "./users/groups");
+    create_directory(fs, groupname);
+
+    // Restaurer le répertoire courant
+    strcpy(fs->current_directory, current_dir_backup);
+
+    printf("Répertoire du groupe '%s' créé dans ./users/groups\n", groupname);
+}
 
 // Fonction pour créer un groupe
 void user_add_group(Filesystem *fs, const char *groupname) {
     if (groupname == NULL || strlen(groupname) == 0) {
         printf("Erreur : nom de groupe invalide.\n");
         return;
+    }
+
+    if (strcmp(current_own, groupname) == 1) {
+        // Créer le répertoire du groupe s'il n'existe pas
+        create_group_directory(fs, groupname);
     }
 
     // Trouver l'utilisateur actuel dans la table des groupes
@@ -131,7 +166,6 @@ void user_add_group(Filesystem *fs, const char *groupname) {
         fs->group[user_index].taille++;
         printf("Groupe '%s' ajouté à l'utilisateur '%s'.\n", groupname, current_own);
         save_filesystem(fs);
-        strncpy(current_group, groupname, strlen(groupname));
         strncpy(current_group, groupname, strlen(groupname));
         if (strlen(current_group) == 0) {
             strncpy(current_group, groupname, strlen(groupname));
@@ -203,9 +237,16 @@ void init_filesystem(Filesystem *fs) {
         printf("Fichier système non trouvé, initialisation...\n");
         fs->inode_count = 0;
         fs->group_count = 0;
-        strcpy(fs->current_directory, "/home");
+        strcpy(fs->current_directory, ".");
         init_superblock(); // Initialiser le superbloc
+        create_directory(fs, "users"); // Créer le répertoire des utilisateurs
+        strcpy(fs->current_directory, "./users");
+        create_directory(fs, "groups"); // Créer le répertoire des groupes
+        create_directory(fs, "home"); // Créer le répertoire home
+        create_directory(fs, "local"); // Créer le répertoire local
+        strcpy(fs->current_directory, "./users/home");
         save_filesystem(fs);
+        printf("Système de fichiers initialisé : %s\n", fs->current_directory);
     } else {
         fread(fs, sizeof(Filesystem), 1, file);
         fread(&sb, sizeof(superblock), 1, file);  // Charger le superbloc
@@ -334,10 +375,15 @@ void change_directory(Filesystem *fs, const char *dirname) {
 
 // Fonction pour créer un fichier
 void create_file(Filesystem *fs, const char *filename, size_t size, const char *owner) {
-    strcpy(permissions, "-rw-r--r--"); // Permissions par défaut
+    strcpy(permissions, "-rw-r--r--"); // Permissions par défaut 
 
-    char full_path[MAX_FILENAME * 2];
-    snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, filename);
+    char full_path[MAX_FILENAME * 3];        
+    if (strcmp(current_group, current_own) == 0) {
+        snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, filename);
+    }
+    else {
+        snprintf(full_path, sizeof(full_path), "%s/%s/%s", GROUP_FILE,current_group, filename);
+    }
 
     // Vérifie si un fichier existe déjà dans le répertoire courant
     for (int i = 0; i < fs->inode_count; i++) {
@@ -1329,7 +1375,7 @@ void help() {
     printf("  lsgroups............................Affiche les groupes de l'utilisateur.\n");
     printf("  chgroup <nom>.......................Change le groupe de l'utilisateur.\n");
     printf("  curgroup............................Affiche le groupe actuel.\n");
-
+    printf("  crtgroup <nom>......................Crée un groupe.\n");
 }
 
 // Fonction principale du shell
@@ -1337,6 +1383,7 @@ void shell(Filesystem *fs, char *current_own) {
     char command[100];
 
     printf("\nBienvenue dans le système de fichiers %s!\n", current_own);
+    printf("Système de fichiers initialisé : %s\n", fs->current_directory);
 
     while (current_own) {
         printf("\n%s> ", fs->current_directory);
@@ -1471,6 +1518,8 @@ void shell(Filesystem *fs, char *current_own) {
             change_group(fs, command + 8);
         } else if (strncmp(command, "curgroup", 12) == 0) {
             show_current_group();
+        } else if (strncmp(command, "crtgroup", 8) == 0) {          
+            create_group_directory(fs, command + 9);
         } else {
             printf("Commande inconnue !\n");
         }
@@ -1515,12 +1564,9 @@ void init_main(Filesystem *fs) {
                 strncpy(fs->group[i].user, current_own, NAME_SIZE);
                 fs->group[i].user[NAME_SIZE - 1] = '\0'; // Garantir la terminaison de la chaîne
                 fs->group[i].taille = 0; // Initialiser le nombre de groupes à 0
-                memset(current_group, 0, sizeof(current_group)); // Initialiser current_group à une chaîne vide
+                user_add_group(fs, current_own); // Ajouter l'utilisateur au groupe par défaut
                 found_free_slot = 1;
-                printf("Nouvel utilisateur '%s' créé.\n", current_own);
-                const char* home_directory = "/home";
-                // Construire le chemin complet du répertoire source
-                snprintf(fs->current_directory, sizeof(fs->current_directory), "%s", home_directory);
+                printf("Nouvel utilisateur '%s' créé.\n", current_own);        
                 create_directory(fs,current_own); 
                 good = 1;       
 
@@ -1534,16 +1580,19 @@ void init_main(Filesystem *fs) {
         }
     } else {
         printf("Utilisateur '%s' trouvé.\n", current_own);
+        good = 1;       
+
     }
 
     if (good) {
-        // Construire le chemin complet du répertoire source
-        char temp_path[MAX_FILENAME]; // Utilisez une taille appropriée
-        strncpy(temp_path,fs->current_directory,  sizeof(fs->current_directory));
-        snprintf(fs->current_directory, sizeof(temp_path)+sizeof(current_own), "%s/%s", temp_path, current_own);
-    } 
+        // Réinitialiser le chemin courant avant de créer le répertoire
+        strncpy(fs->current_directory, "./users/home", MAX_FILENAME);
+        create_directory(fs, current_own); // Crée ./users/home/<username>
+        // Mettre à jour le chemin courant
+        snprintf(fs->current_directory, MAX_FILENAME*2, "./users/home/%s", current_own);
+        strncpy(current_group, current_own, sizeof(current_group));  
+    }
 }
-
 
 // Fonction principale
 int main() {
