@@ -266,14 +266,6 @@ void print_free_blocks() {
     printf("Blocs libres disponibles : %d/%d\n", free_blocks, NUM_BLOCKS);
 }
 
-// Fonction pour réinitialiser le système de fichiers
-void reset_filesystem(Filesystem *fs) {
-    fs->inode_count = 0;
-    strcpy(fs->current_directory, "/home");
-    init_superblock(); // Réinitialiser les blocs libres
-    save_filesystem(fs);
-    printf("Système de fichiers réinitialisé.\n");
-}
 
 // Fonction pour créer un répertoire
 void create_directory(Filesystem *fs, const char *dirname) {
@@ -1362,7 +1354,6 @@ void help() {
     printf("  cat <nom>...........................Affiche le contenu d'un fichier.\n");
     printf("  cp <src> <dest> [répertoire]........Copie un fichier vers un répertoire.\n");
     printf("  mv <src> <rep>......................Déplace un fichier vers un répertoire.\n");
-    printf("  reset...............................Réinitialise le système de fichiers.\n");
     printf("  add <nom>...........................Ajoute un utilisateur au groupe.\n");
     printf("  del <nom>...........................Supprime un utilisateur du groupe.\n");
     printf("  clear...............................Efface l'écran.\n");
@@ -1432,8 +1423,6 @@ void shell(Filesystem *fs, char *current_own) {
             write_to_file(fs, filename, content);
         } else if (strncmp(command, "cat", 3) == 0) {
             read_file(fs, command + 4);
-        } else if (strncmp(command, "reset", 5) == 0) {
-            reset_filesystem(fs);
         } else if (strncmp(command, "rm", 2) == 0) {
             delete_file(fs, command + 3);
         } else if (strncmp(command, "cp", 2) == 0) {
