@@ -95,6 +95,7 @@ char permissions[PERM_SIZE];  // Permissions par défaut
 void save_filesystem(Filesystem *fs);
 void create_directory(Filesystem *fs, const char *dirname);
 void user_add_group(Filesystem *fs, const char *groupname);
+Inode* get_inode_by_name(Filesystem *fs, const char *filename);
 
 // Fonction pour créer un groupe dans ./user/groups s'il n'existe pas
 void create_group_directory(Filesystem *fs, const char *groupname) {
@@ -268,7 +269,6 @@ void print_free_blocks() {
     printf("Blocs libres disponibles : %d/%d\n", free_blocks, NUM_BLOCKS);
 }
 
-
 // Fonction pour créer un répertoire
 void create_directory(Filesystem *fs, const char *dirname) {
     //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex
@@ -277,7 +277,7 @@ void create_directory(Filesystem *fs, const char *dirname) {
         //pthread_mutex_unlock(&fs_mutex); // Déverrouiller avant de retourner
         return;
     }
-    strcpy(permissions, "drw-rw-r--"); // Permissions par défaut
+    strcpy(permissions, "drw-------"); // Permissions par défaut
 
     char path[MAX_FILENAME * 2];
     snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
@@ -357,16 +357,20 @@ int is_user_in_group(Filesystem *fs, const char *username, const char *groupname
 // Fonction pour changer de répertoire
 void change_directory(Filesystem *fs, const char *dirname) {
     // Vérification de l'accès au répertoire home privé
+    char perm = 'r';
+    Inode *inod = get_inode_by_name(fs, dirname);
     if (strcmp(fs->current_directory, "./users/home") == 0) {
-        if (strcmp(dirname, "..") != 0 && strcmp(dirname, current_own) != 0) {
-            printf("Accès refusé : %s est un répertoire privé!\n", dirname);
-            return;
+        if (inod->permissions[7] != perm) {
+            if (strcmp(dirname, "..") != 0 && strcmp(dirname, current_own) != 0 ) {
+                printf("Accès refusé : %s est un répertoire privé!\n", dirname);
+                return;
+            }
         }
     }
     
     // Vérification de l'accès au groupe privé
     if (strcmp(fs->current_directory, "./users/groups") == 0) {
-        if (strcmp(dirname, "..") != 0 && !is_user_in_group(fs, current_own, dirname)) {
+        if (strcmp(dirname, "..") != 0 && !is_user_in_group(fs, current_own, dirname) && inod->permissions[6] != perm) {
             printf("Accès refusé : %s est un groupe privé ou vous n'en faites pas partie!\n", dirname);
             return;
         }
@@ -590,6 +594,56 @@ void chmod_file(Filesystem *fs, const char *filename, const char *target, const 
 
     // Si le fichier n'est pas trouvé
     printf("Fichier '%s' introuvable !\n", filename);
+}
+
+// Fonction pour modifier les permissions d'un fichier
+void chmod_dir(Filesystem *fs, const char *repertoire_name, const char *target, const char *new_permissions) {
+    char full_path[MAX_FILENAME * 2];
+    snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, repertoire_name);
+
+    // Parcourir tous les inodes pour trouver le répertoire correspondant
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, full_path) == 0) {
+            if (strcmp(current_own, fs->inodes[i].owner) == 0 || is_user_in_group(fs, current_own, repertoire_name)) {
+                // Gérer les permissions en fonction de la cible
+                if (strcmp(target, "-Owner") == 0) {
+                    if (strlen(new_permissions) == 3) {
+                        strncpy(fs->inodes[i].permissions + 1, new_permissions, 3);  // Mettre à jour les permissions du propriétaire
+                        printf("Permissions de '%s' pour le propriétaire mises à jour en '%s'.\n", repertoire_name, new_permissions);
+                    } else {
+                        printf("Les permissions du propriétaire doivent être exactement 3 caractères (rwx).\n");
+                    }
+                } else if (strcmp(target, "-Group") == 0) {
+                    if (strlen(new_permissions) == 3) {
+                        strncpy(fs->inodes[i].permissions + 4, new_permissions, 3);  // Mettre à jour les permissions du groupe
+                        printf("Permissions de '%s' pour le groupe mises à jour en '%s'.\n", repertoire_name, new_permissions);
+                    } else {
+                        printf("Les permissions du groupe doivent être exactement 3 caractères (rwx).\n");
+                    }
+                } else if (strcmp(target, "-Others") == 0) {
+                    if (strlen(new_permissions) == 3) {
+                        strncpy(fs->inodes[i].permissions + 7, new_permissions, 3);  // Mettre à jour les permissions des autres
+                        printf("Permissions de '%s' pour les autres mises à jour en '%s'.\n", repertoire_name, new_permissions);
+                    } else {
+                        printf("Les permissions des autres doivent être exactement 3 caractères (rwx).\n");
+                    }
+                } else {
+                    printf("Option '%s' inconnue !\n", target);
+                    return;
+                }
+
+                // Mettre à jour la date de modification
+                fs->inodes[i].modification_time = time(NULL);
+                save_filesystem(fs);
+                return;
+            }
+            printf("Vous n'êtes pas pripriétaire de ce répertoire!\n");
+            return;
+        }
+    }
+
+    // Si le fichier n'est pas trouvé
+    printf("Répertoire '%s' introuvable !\n", repertoire_name);
 }
 
 // Fonction pour obtenir un inode par son nom
@@ -1443,12 +1497,18 @@ void shell(Filesystem *fs, char *current_own) {
             show_file_metadata(fs, command + 6);
         } else if (strncmp(command, "statd", 5) == 0) {
             show_directory_metadata(fs, command + 6);
-        } else if (strncmp(command, "chmod", 6) == 0) {
+        } else if (strncmp(command, "chmodf", 6) == 0) {
             char filename[MAX_FILENAME];
             char target[10];
             char new_permissions[4];
-            sscanf(command + 6, "%s %s %s", filename, target, new_permissions);
+            sscanf(command + 7, "%s %s %s", filename, target, new_permissions);
             chmod_file(fs, filename, target, new_permissions);
+        }  else if (strncmp(command, "chmodd", 6) == 0) {
+            char dirname[MAX_FILENAME];
+            char target[10];
+            char new_permissions[4];
+            sscanf(command + 7, "%s %s %s", dirname, target, new_permissions);
+            chmod_dir(fs, dirname, target, new_permissions);
         } else if (strncmp(command, "write", 5) == 0) {
             char filename[MAX_FILENAME];
             char content[MAX_CONTENT * 2];
@@ -1589,7 +1649,7 @@ void init_main(Filesystem *fs) {
                 user_add_group(fs, current_own); // Ajouter l'utilisateur au groupe par défaut
                 found_free_slot = 1;
                 printf("Nouvel utilisateur '%s' créé.\n", current_own);        
-                create_directory(fs,current_own); 
+                create_directory(fs,current_own);
                 good = 1;       
                 delete_directory(fs, current_own);
                 save_filesystem(fs); // Sauvegarder le système de fichiers
