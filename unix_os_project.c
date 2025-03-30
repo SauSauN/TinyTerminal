@@ -814,21 +814,25 @@ void read_file(Filesystem *fs, const char *filename) {
                 return;
             }
         
-            if (strcmp(fs->inodes[i].owner, current_own) != 0 && strcmp(fs->inodes[i].group, current_group) == 0 && fs->inodes[i].permissions[3] != perm) {
+            if (strcmp(fs->inodes[i].owner, current_own) != 0 && strcmp(fs->inodes[i].group, current_group) == 0 && fs->inodes[i].permissions[4] != perm) {
                 printf("Permission refusée : Le groupe %s ne possède pas les droits de lecture.\n", current_group);
                 return;
             }
         
-            if (strcmp(fs->inodes[i].owner, current_own) != 0 && strcmp(fs->inodes[i].group, current_group) != 0 && fs->inodes[i].permissions[6] != perm) {
+            if (strcmp(fs->inodes[i].owner, current_own) != 0 && strcmp(fs->inodes[i].group, current_group) != 0 && fs->inodes[i].permissions[7] != perm) {
                 printf("Permission refusée : Ni l'utilisateur %s ni le groupe %s ne possèdent les droits de lecture.\n", current_own, current_group);
                 return;
             }
 
             // Afficher le contenu du fichier
             printf("Contenu du fichier '%s':\n", filename);
-            for (int j = 0; j < fs->inodes[i].block_count; j++) {
-                int block_index = fs->inodes[i].block_indices[j];
-                printf("%s", block_data[block_index]);
+            if (fs->inodes[i].block_count == 0) {
+                printf("(Le fichier est vide)\n");
+            } else {
+                for (int j = 0; j < fs->inodes[i].block_count; j++) {
+                    int block_index = fs->inodes[i].block_indices[j];
+                    printf("%s", block_data[block_index]);
+                }
             }
             printf("\n");
             return;
@@ -1662,6 +1666,7 @@ int verify_sudo_password(Filesystem* fs, const char* current_own) {
         printf("[sudo] Mot de passe incorrect\n");
         return 0;
     }
+    sudo = 1;
     return 1;
 }
 
@@ -1719,24 +1724,28 @@ void shell(Filesystem *fs, char *current_own) {
         if (strncmp(command, "sudo passwd", 11) == 0) {
             if (verify_sudo_password(fs, current_own)) {
                 show_password(fs);
+                sudo = 0; // Réinitialiser le mode sudo
             } else {
                 continue;
             }
         } else if (strncmp(command, "sudo chgpasswd", 14) == 0) {
             if (verify_sudo_password(fs, current_own)) {
                 change_password(fs);
+                sudo = 0; // Réinitialiser le mode sudo
             } else {
                 continue;
             }
         } else if (strncmp(command, "sudo deluser", 12) == 0) {
             if (verify_sudo_password(fs, current_own)) {
                 delete_user_account(fs, command + 13);
+                sudo = 0; // Réinitialiser le mode sudo
             } else {
                 continue;
             }
         } else if (strncmp(command, "sudo resetuser", 14) == 0) {
             if (verify_sudo_password(fs, current_own)) {
                 reset_user_workspace(fs, command + 15);
+                sudo = 0; // Réinitialiser le mode sudo
             } else {
                 continue;
             }
