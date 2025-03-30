@@ -6,23 +6,23 @@
 //#include <pthread.h> // Pour les threads
 
 // Définition des constantes
-#define MAX_FILES 100          // Nombre maximal de fichiers
-#define MAX_FILENAME 50        // Taille maximale du nom de fichier
-#define MAX_DIRECTORY 50       // Taille maximale du nom de répertoire
+#define MAX_FILES 100                       // Nombre maximal de fichiers
+#define MAX_FILENAME 50                     // Taille maximale du nom de fichier
+#define MAX_DIRECTORY 50                    // Taille maximale du nom de répertoire
 #define FILESYSTEM_FILE "my_filesystem.dat" // Nom du fichier contenant le système de fichiers
-#define NAME_SIZE 10          // Taille du nom
-#define PERM_SIZE 11           // Taille des permissions
-#define BLOCK_SIZE 512         // Taille d'un bloc de données
-#define NUM_BLOCKS 1024        // Nombre total de blocs
-#define NUM_INODES 128         // Nombre total d'inodes
-#define GROUP_SIZE 10          // Taille de groupe par personne
-#define NUM_USER 20            // Nombre total d'utilisateurs
-#define FILE_SIZE 12           // Taille du fichier par défaut
-#define MAX_CONTENT 100        // Taille maximale du contenu
-#define NUM_LIEN_MAX 10        // Nombre maximal de liens
-#define MAX_PATH 50           // Taille maximale du chemin
-#define GROUP_FILE "./users/groups" // Répertoire des groupes
-#define MAX_PASSWORD 50       // Taille maximale du mot de passe
+#define NAME_SIZE 10                        // Taille du nom
+#define PERM_SIZE 11                        // Taille des permissions
+#define BLOCK_SIZE 512                      // Taille d'un bloc de données
+#define NUM_BLOCKS 1024                     // Nombre total de blocs
+#define NUM_INODES 128                      // Nombre total d'inodes
+#define GROUP_SIZE 10                       // Taille de groupe par personne
+#define NUM_USER 20                         // Nombre total d'utilisateurs
+#define FILE_SIZE 12                        // Taille du fichier par défaut
+#define MAX_CONTENT 100                     // Taille maximale du contenu
+#define NUM_LIEN_MAX 10                     // Nombre maximal de liens
+#define MAX_PATH 50                         // Taille maximale du chemin
+#define GROUP_FILE "./users/groups"         // Répertoire des groupes
+#define MAX_PASSWORD 50                     // Taille maximale du mot de passe
 
 // Définition de la structure d'un tableau
 typedef struct{
@@ -53,9 +53,9 @@ typedef struct {
 
 // Structure pour associer une personne à un Group
 typedef struct {
-    char user[NAME_SIZE];      // Nom du l'utilisateur
-    Tab group[GROUP_SIZE];     // Groupe associé a l'utilisateur
-    int taille;
+    char user[NAME_SIZE];        // Nom du l'utilisateur
+    Tab group[GROUP_SIZE];       // Groupe associé a l'utilisateur
+    int taille;                  // Taille du groupe
     char password[MAX_PASSWORD]; // Mot de passe de l'utilisateur
 } User_Group;
 
@@ -70,10 +70,10 @@ typedef struct {
 
 // Structure représentant le système de fichiers
 typedef struct {
-    Inode inodes[MAX_FILES];      // Table des inodes
-    User_Group group[NUM_USER]; // Table des groupe
-    int inode_count;              // Nombre d'inodes utilisés
-    int group_count;              // Nombre de groupes utilisés
+    Inode inodes[MAX_FILES];          // Table des inodes
+    User_Group group[NUM_USER];       // Table des groupe
+    int inode_count;                  // Nombre d'inodes utilisés
+    int group_count;                  // Nombre de groupes utilisés
     char current_directory[MAX_PATH]; // Répertoire actuel
 } Filesystem;
 
@@ -321,7 +321,7 @@ void create_directory(Filesystem *fs, const char *dirname) {
     fs->inode_count++;
 
     save_filesystem(fs);
-    printf("Répertoire '%s' créé.\n", path);
+    //printf("Répertoire '%s' créé.\n", path);
     //pthread_mutex_unlock(&fs_mutex); // Déverrouiller avant de retourner
 }
 
@@ -1633,22 +1633,35 @@ void change_password(Filesystem *fs) {
 int verify_password(Filesystem *fs, const char *password) {
     // Vérifier si le mot de passe est NULL ou vide
     if (password == NULL || strlen(password) == 0) {
-        return 1;
+        return 0; // Mot de passe invalide
     }
-
     // Parcourir la table des utilisateurs pour trouver l'utilisateur actuel
     for (int i = 0; i < NUM_USER; i++) {
         if (strcmp(fs->group[i].user, current_own) == 0) {
             // Comparer le mot de passe fourni avec celui stocké
             if (strcmp(fs->group[i].password, password) == 0) {
-                return 0; // Les mots de passe correspondent
+                return 1; // Les mots de passe correspondent
             } else {
-                return 1; // Les mots de passe ne correspondent pas
+                return 0; // Les mots de passe ne correspondent pas
             }
         }
     }
 
     // Si l'utilisateur n'est pas trouvé
+    return 0;
+}
+
+// Fonction pour vérifier le mot de passe sudo
+int verify_sudo_password(Filesystem* fs, const char* current_own) {
+    printf("[sudo] Mot de passe pour %s: ", current_own);
+    char password[MAX_PASSWORD];
+    fgets(password, MAX_PASSWORD, stdin);
+    password[strcspn(password, "\n")] = '\0';
+    
+    if (!verify_password(fs, password)) {
+        printf("[sudo] Mot de passe incorrect\n");
+        return 0;
+    }
     return 1;
 }
 
@@ -1703,22 +1716,42 @@ void shell(Filesystem *fs, char *current_own) {
         fgets(command, sizeof(command), stdin);
         command[strcspn(command, "\n")] = 0; // Supprimer le saut de ligne
 
-        if (strncmp(command, "exit", 4) == 0) {
+        if (strncmp(command, "sudo passwd", 11) == 0) {
+            if (verify_sudo_password(fs, current_own)) {
+                show_password(fs);
+            } else {
+                continue;
+            }
+        } else if (strncmp(command, "sudo chgpasswd", 14) == 0) {
+            if (verify_sudo_password(fs, current_own)) {
+                change_password(fs);
+            } else {
+                continue;
+            }
+        } else if (strncmp(command, "sudo deluser", 12) == 0) {
+            if (verify_sudo_password(fs, current_own)) {
+                delete_user_account(fs, command + 13);
+            } else {
+                continue;
+            }
+        } else if (strncmp(command, "sudo resetuser", 14) == 0) {
+            if (verify_sudo_password(fs, current_own)) {
+                reset_user_workspace(fs, command + 15);
+            } else {
+                continue;
+            }
+        } else if (strncmp(command, "exit", 4) == 0) {
             printf("Arrêt du système de fichiers.\n");
             strcpy(fs->current_directory, "/home");
             break;
         } else if (strncmp(command, "help", 4) == 0) {
             help();
-        } else if (strncmp(command, "passwd", 6) == 0) {
-            show_password(fs);
-        } else if (strncmp(command, "chgpasswd", 9) == 0) {
-            change_password(fs);
+        } else if (strncmp(command, "passwd", 6) == 0 || strncmp(command, "chgpasswd", 9) == 0 || strncmp(command, "sudo passwd", 11) == 0 || strncmp(command, "deluser", 7) == 0  || strncmp(command, "resetuser", 9) == 0) {
+            printf("Erreur : Cette commande fonctionne uniquement avec sudo\n");
         } else if (strncmp(command, "pwd", 3) == 0) {
             printf("%s\n", fs->current_directory);
-        } else if (strncmp(command, "deluser", 7) == 0) {
-            delete_user_account(fs, command + 8);
         } else if (strncmp(command, "resetuser", 9) == 0) {
-            reset_user_workspace(fs, command + 10);
+            printf("Erreur : Cette commande fonctionne uniquement avec sudo\n");
         } else if (strncmp(command, "mkdir", 5) == 0) {
             create_directory(fs, command + 6);
         } else if (strncmp(command, "rmdir", 5) == 0) {
