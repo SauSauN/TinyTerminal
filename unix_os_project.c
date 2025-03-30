@@ -21,7 +21,8 @@
 #define MAX_CONTENT 100        // Taille maximale du contenu
 #define NUM_LIEN_MAX 10        // Nombre maximal de liens
 #define MAX_PATH 50           // Taille maximale du chemin
-#define GROUP_FILE "./users/groups" //
+#define GROUP_FILE "./users/groups" // Répertoire des groupes
+#define MAX_PASSWORD 50       // Taille maximale du mot de passe
 
 // Définition de la structure d'un tableau
 typedef struct{
@@ -55,6 +56,7 @@ typedef struct {
     char user[NAME_SIZE];      // Nom du l'utilisateur
     Tab group[GROUP_SIZE];     // Groupe associé a l'utilisateur
     int taille;
+    char password[MAX_PASSWORD]; // Mot de passe de l'utilisateur
 } User_Group;
 
 // Structure représentant le superbloc (métadonnées du système de fichiers)
@@ -89,6 +91,7 @@ file_entry file_table[NUM_INODES];      // Table des noms de fichiers
 char current_own[NAME_SIZE];  // Utilisateur actuel
 char current_group[GROUP_SIZE];  // Utilisateur actuel
 char permissions[PERM_SIZE];  // Permissions par défaut
+int sudo = 0; // Indicateur pour le mode super utilisateur
 //pthread_mutex_t fs_mutex = PTHREAD_MUTEX_INITIALIZER; // Mutex pour la synchronisation
 
 
@@ -240,6 +243,8 @@ void init_filesystem(Filesystem *fs) {
         printf("Fichier système non trouvé, initialisation...\n");
         fs->inode_count = 0;
         fs->group_count = 0;
+        strcpy(fs->current_directory, "\0");  // Chaîne vide
+        create_directory(fs, ".");
         strcpy(fs->current_directory, ".");
         init_superblock(); // Initialiser le superbloc
         create_directory(fs, "users"); // Créer le répertoire des utilisateurs
@@ -271,16 +276,22 @@ void print_free_blocks() {
 
 // Fonction pour créer un répertoire
 void create_directory(Filesystem *fs, const char *dirname) {
-    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex
     if (fs->inode_count >= MAX_FILES) {
         printf("Nombre maximum de fichiers atteint !\n");
-        //pthread_mutex_unlock(&fs_mutex); // Déverrouiller avant de retourner
         return;
     }
-    strcpy(permissions, "drw-------"); // Permissions par défaut
+    strcpy(permissions, "drw-------");
 
+    // Construire le chemin complet
     char path[MAX_FILENAME * 2];
-    snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
+    if (strcmp(fs->current_directory, "\0") == 0) {
+        snprintf(path, sizeof(path), "%s", dirname);
+    }     
+    if (strcmp(fs->current_directory, ".") == 0) {
+        snprintf(path, sizeof(path), "./%s", dirname);
+    } else {
+        snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
+    }
 
     strcpy(fs->inodes[fs->inode_count].name, path);
     fs->inodes[fs->inode_count].is_directory = 1;
@@ -310,7 +321,7 @@ void create_directory(Filesystem *fs, const char *dirname) {
     fs->inode_count++;
 
     save_filesystem(fs);
-    //printf("Répertoire '%s' créé.\n", path);
+    printf("Répertoire '%s' créé.\n", path);
     //pthread_mutex_unlock(&fs_mutex); // Déverrouiller avant de retourner
 }
 
@@ -356,42 +367,82 @@ int is_user_in_group(Filesystem *fs, const char *username, const char *groupname
 
 // Fonction pour changer de répertoire
 void change_directory(Filesystem *fs, const char *dirname) {
-    // Vérification de l'accès au répertoire home privé
+    // Vérification des entrées
+    if (dirname == NULL || strlen(dirname) == 0) {
+        printf("Erreur: nom de répertoire invalide.\n");
+        return;
+    }
+
+    // Cas spécial pour la navigation parent
+    if (strcmp(dirname, "..") == 0) {
+        // Si déjà à la racine
+        if (strcmp(fs->current_directory, ".") == 0 || 
+            strcmp(fs->current_directory, "./") == 0) {
+            printf("Vous êtes déjà à la racine.\n");
+            return;
+        }
+
+        // Trouver le dernier '/'
+        char *last_slash = strrchr(fs->current_directory, '/');
+        if (last_slash == NULL) {
+            // Cas improbable où il n'y a pas de slash
+            strcpy(fs->current_directory, ".");
+        } else {
+            // Cas normal - tronquer au dernier slash
+            if (last_slash == fs->current_directory) {
+                // Cas "/something" -> "/"
+                *(last_slash + 1) = '\0';
+            } else {
+                // Cas "/path/to/something" -> "/path/to"
+                *last_slash = '\0';
+                
+                // Cas spécial pour "./something" -> "."
+                if (strcmp(fs->current_directory, ".") == 0) {
+                    strcpy(fs->current_directory, "./");
+                }
+            }
+        }
+        printf("Déplacé dans '%s'.\n", fs->current_directory);
+        return;
+    }
+
+    // Vérification des permissions pour les répertoires spéciaux
     char perm = 'r';
     Inode *inod = get_inode_by_name(fs, dirname);
+    
+    // Accès au répertoire home
     if (strcmp(fs->current_directory, "./users/home") == 0) {
-        if (inod->permissions[7] != perm) {
-            if (strcmp(dirname, "..") != 0 && strcmp(dirname, current_own) != 0 ) {
+        if (inod != NULL && inod->permissions[7] != perm) {
+            if (strcmp(dirname, current_own) != 0) {
                 printf("Accès refusé : %s est un répertoire privé!\n", dirname);
                 return;
             }
         }
     }
     
-    // Vérification de l'accès au groupe privé
+    // Accès aux groupes
     if (strcmp(fs->current_directory, "./users/groups") == 0) {
-        if (strcmp(dirname, "..") != 0 && !is_user_in_group(fs, current_own, dirname) && inod->permissions[6] != perm) {
+        if (inod != NULL && strcmp(dirname, "..") != 0 && 
+            !is_user_in_group(fs, current_own, dirname) && 
+            inod->permissions[6] != perm) {
             printf("Accès refusé : %s est un groupe privé ou vous n'en faites pas partie!\n", dirname);
             return;
         }
     }
 
-    if (strcmp(dirname, "..") == 0) {
-        if (strcmp(fs->current_directory, "./") == 0) {
-            printf("Vous êtes déjà dans le root.\n");
-            return;
-        }
-        char *last_slash = strrchr(fs->current_directory, '/');
-        if (last_slash) {
-            *last_slash = '\0';
-        }
-        printf("Déplacé dans '%s'.\n", fs->current_directory);
-        return;
-    } 
 
+
+    // Construction du nouveau chemin
     char path[MAX_FILENAME * 2];
-    snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
+    if (strcmp(fs->current_directory, "./") == 0 || 
+        strcmp(fs->current_directory, ".") == 0) {
+        // Cas spécial pour la racine
+        snprintf(path, sizeof(path), "./%s", dirname);
+    } else {
+        snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
+    }
 
+    // Recherche du répertoire
     for (int i = 0; i < fs->inode_count; i++) {
         if (strcmp(fs->inodes[i].name, path) == 0 && fs->inodes[i].is_directory) {
             strcpy(fs->current_directory, path);
@@ -399,7 +450,7 @@ void change_directory(Filesystem *fs, const char *dirname) {
             return;
         }
     }
-    printf("Répertoire '%s' introuvable !\n", path);
+    printf("Répertoire '%s' introuvable !\n", dirname);
 }
 
 // Fonction pour créer un fichier
@@ -462,32 +513,30 @@ void create_file(Filesystem *fs, const char *filename, size_t size, const char *
 // Fonction pour lister le contenu du répertoire courant
 void list_directory(Filesystem *fs) {
     printf("Contenu de '%s':\n", fs->current_directory);
-
     int found = 0;
+    size_t current_dir_len = strlen(fs->current_directory);
+
     for (int i = 0; i < fs->inode_count; i++) {
-        char *item_name = strrchr(fs->inodes[i].name, '/');
-        if (item_name) {
-            item_name++; // Ignorer le '/'
-        } else {
-            item_name = fs->inodes[i].name;
-        }
-
-        char parent_path[MAX_FILENAME * 2];
-        snprintf(parent_path, sizeof(parent_path), "%s/%s", fs->current_directory, item_name);
-
-        if (strcmp(fs->inodes[i].name, parent_path) == 0) {
-            if (fs->inodes[i].is_directory) {
-                printf("[DIR]  %s/\n", item_name);
-            } else {
-                printf("[FILE] %s (%d octets)\n", item_name, fs->inodes[i].size);
+        // Check if the item is directly in current directory
+        if (strncmp(fs->inodes[i].name, fs->current_directory, current_dir_len) == 0) {
+            const char *remaining_path = fs->inodes[i].name + current_dir_len;
+            
+            // Skip leading slash if present
+            if (*remaining_path == '/') remaining_path++;
+            
+            // If there are no more slashes, it's directly in this directory
+            if (strlen(remaining_path) > 0 && strchr(remaining_path, '/') == NULL) {
+                if (fs->inodes[i].is_directory) {
+                    printf("[DIR]  %s/\n", remaining_path);
+                } else {
+                    printf("[FILE] %s (%d octets)\n", remaining_path, fs->inodes[i].size);
+                }
+                found = 1;
             }
-            found = 1;
         }
     }
 
-    if (!found) {
-        printf("Le répertoire est vide.\n");
-    }
+    if (!found) printf("Le répertoire est vide.\n");
 }
 
 // Fonction pour afficher les métadonnées d'un fichier
@@ -1421,6 +1470,188 @@ void show_current_group() {
     }
 }
 
+// Fonction pour supprimer uniquement son propre compte (même en sudo)
+void delete_user_account(Filesystem *fs, const char *username) {
+    // Vérifier si l'utilisateur actuel correspond au compte à supprimer
+    if (strcmp(current_own, username) != 0) {
+        printf("Erreur : Vous ne pouvez supprimer que votre propre compte.\n");
+        return;
+    }
+
+    // Vérifier si l'utilisateur existe
+    int user_index = -1;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, username) == 0) {
+            user_index = i;
+            break;
+        }
+    }
+
+    if (user_index == -1) {
+        printf("Erreur : l'utilisateur '%s' n'existe pas.\n", username);
+        return;
+    }
+
+    // Supprimer le répertoire personnel
+    char user_home_path[MAX_PATH];
+    snprintf(user_home_path, sizeof(user_home_path), "./users/home/%s", username);
+    delete_directory(fs, user_home_path);
+
+    // Supprimer l'utilisateur de la table des groupes
+    memset(&fs->group[user_index], 0, sizeof(User_Group));
+
+    // Supprimer tous ses fichiers/dossiers
+    for (int i = 0; i < fs->inode_count; ) {
+        if (strcmp(fs->inodes[i].owner, username) == 0) {
+            if (fs->inodes[i].is_directory) {
+                delete_directory(fs, fs->inodes[i].name);
+            } else {
+                delete_file(fs, fs->inodes[i].name);
+            }
+            // Ne pas incrémenter `i` car la suppression réduit `inode_count`
+        } else {
+            i++;
+        }
+    }
+
+    // Déconnecter l'utilisateur
+    printf("Compte '%s' supprimé. Déconnexion...\n", username);
+    strcpy(current_own, "");
+    strcpy(current_group, "");
+
+    save_filesystem(fs);
+}
+
+// Réinitialise le répertoire de travail d'un utilisateur (supprime tout sauf son dossier home)
+void reset_user_workspace(Filesystem *fs, const char *username) {
+    // Vérifier si l'utilisateur existe
+    int user_exists = 0;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, username) == 0) {
+            user_exists = 1;
+            break;
+        }
+    }
+
+    if (!user_exists) {
+        printf("Erreur : l'utilisateur '%s' n'existe pas.\n", username);
+        return;
+    }
+
+    // Chemin du dossier home à préserver
+    char user_home_path[MAX_PATH];
+    snprintf(user_home_path, sizeof(user_home_path), "./users/home/%s", username);
+
+    // Parcourir tous les fichiers/dossiers de l'utilisateur
+    for (int i = 0; i < fs->inode_count; ) {
+        // Si le fichier/dossier appartient à l'utilisateur ET n'est pas son dossier home
+        if (strcmp(fs->inodes[i].owner, username) == 0 && 
+            strcmp(fs->inodes[i].name, user_home_path) != 0) {
+            
+            // Supprimer le fichier ou le répertoire
+            if (fs->inodes[i].is_directory) {
+                delete_directory(fs, fs->inodes[i].name);
+            } else {
+                delete_file(fs, fs->inodes[i].name);
+            }
+            // Ne pas incrémenter `i` car la suppression réduit `fs->inode_count`
+        } else {
+            i++; // Passer au suivant
+        }
+    }
+
+    printf("Répertoire de travail de '%s' réinitialisé (dossier home conservé).\n", username);
+    save_filesystem(fs);
+}
+
+// Fonction pour afficher le mot de passe de l'utilisateur actuel
+void show_password(Filesystem *fs) {
+    // Trouver l'utilisateur dans la table des groupes
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, current_own) == 0) {
+            printf("Mot de passe de %s: %s\n", current_own, fs->group[i].password);
+            return;
+        }
+    }
+    printf("Utilisateur non trouvé.\n");
+}
+
+// Fonction pour modifier le mot de passe de l'utilisateur actuel
+void change_password(Filesystem *fs) {
+    char current_password[MAX_PASSWORD];
+    char new_password[MAX_PASSWORD];
+    char confirm_password[MAX_PASSWORD];
+
+    // Demander le mot de passe actuel
+    printf("Entrez votre mot de passe actuel: ");
+    fgets(current_password, MAX_PASSWORD, stdin);
+    current_password[strcspn(current_password, "\n")] = '\0';
+
+    // Trouver l'utilisateur dans la table des groupes
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, current_own) == 0) {
+            // Vérifier le mot de passe actuel
+            if (strcmp(fs->group[i].password, current_password) != 0) {
+                printf("Mot de passe incorrect.\n");
+                return;
+            }
+
+            // Demander le nouveau mot de passe
+            printf("Entrez votre nouveau mot de passe: ");
+            fgets(new_password, MAX_PASSWORD, stdin);
+            new_password[strcspn(new_password, "\n")] = '\0';
+
+            // Confirmer le nouveau mot de passe
+            printf("Confirmez votre nouveau mot de passe: ");
+            fgets(confirm_password, MAX_PASSWORD, stdin);
+            confirm_password[strcspn(confirm_password, "\n")] = '\0';
+
+            // Vérifier que les nouveaux mots de passe correspondent
+            if (strcmp(new_password, confirm_password) != 0) {
+                printf("Les mots de passe ne correspondent pas.\n");
+                return;
+            }
+
+            // Vérifier que le nouveau mot de passe est différent de l'ancien
+            if (strcmp(new_password, current_password) == 0) {
+                printf("Le nouveau mot de passe doit être différent de l'actuel.\n");
+                return;
+            }
+
+            // Changer le mot de passe
+            strncpy(fs->group[i].password, new_password, MAX_PASSWORD);
+            fs->group[i].password[MAX_PASSWORD - 1] = '\0';
+            save_filesystem(fs);
+            printf("Mot de passe modifié avec succès.\n");
+            return;
+        }
+    }
+    printf("Utilisateur non trouvé.\n");
+}
+
+// Fonction pour vérifier le mot de passe
+int verify_password(Filesystem *fs, const char *password) {
+    // Vérifier si le mot de passe est NULL ou vide
+    if (password == NULL || strlen(password) == 0) {
+        return 1;
+    }
+
+    // Parcourir la table des utilisateurs pour trouver l'utilisateur actuel
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, current_own) == 0) {
+            // Comparer le mot de passe fourni avec celui stocké
+            if (strcmp(fs->group[i].password, password) == 0) {
+                return 0; // Les mots de passe correspondent
+            } else {
+                return 1; // Les mots de passe ne correspondent pas
+            }
+        }
+    }
+
+    // Si l'utilisateur n'est pas trouvé
+    return 1;
+}
+
 // Fonction pour afficher l'aide
 void help() {
     printf("Commandes disponibles :\n");
@@ -1454,6 +1685,10 @@ void help() {
     printf("  chgroup <nom>.......................Change le groupe de l'utilisateur.\n");
     printf("  curgroup............................Affiche le groupe actuel.\n");
     printf("  crtgroup <nom>......................Crée un groupe.\n");
+    printf("  deluser <nom>.......................Supprime un compte utilisateur.\n");
+    printf("  resetuser <nom>.....................Réinitialise le répertoire de travail d'un utilisateur.\n");
+    printf("  passwd..............................Affiche le mot de passe de l'utilisateur.\n");
+    printf("  chgpasswd...........................Change le mot de passe de l'utilisateur.\n");
 }
 
 // Fonction principale du shell
@@ -1474,8 +1709,16 @@ void shell(Filesystem *fs, char *current_own) {
             break;
         } else if (strncmp(command, "help", 4) == 0) {
             help();
+        } else if (strncmp(command, "passwd", 6) == 0) {
+            show_password(fs);
+        } else if (strncmp(command, "chgpasswd", 9) == 0) {
+            change_password(fs);
         } else if (strncmp(command, "pwd", 3) == 0) {
             printf("%s\n", fs->current_directory);
+        } else if (strncmp(command, "deluser", 7) == 0) {
+            delete_user_account(fs, command + 8);
+        } else if (strncmp(command, "resetuser", 9) == 0) {
+            reset_user_workspace(fs, command + 10);
         } else if (strncmp(command, "mkdir", 5) == 0) {
             create_directory(fs, command + 6);
         } else if (strncmp(command, "rmdir", 5) == 0) {
@@ -1503,7 +1746,7 @@ void shell(Filesystem *fs, char *current_own) {
             char new_permissions[4];
             sscanf(command + 7, "%s %s %s", filename, target, new_permissions);
             chmod_file(fs, filename, target, new_permissions);
-        }  else if (strncmp(command, "chmodd", 6) == 0) {
+        } else if (strncmp(command, "chmodd", 6) == 0) {
             char dirname[MAX_FILENAME];
             char target[10];
             char new_permissions[4];
@@ -1643,15 +1886,29 @@ void init_main(Filesystem *fs) {
         int found_free_slot = 0;
         for (int i = 0; i < NUM_USER; i++) {
             if (fs->group[i].user[0] == '\0') { // Si l'emplacement est libre
+
+                // Demander un mot de passe simple (visible à l'écran)
+                char password[MAX_PASSWORD];
+                printf("Entrez votre mot de passe : ");
+                fgets(password, MAX_PASSWORD, stdin);
+                password[strcspn(password, "\n")] = '\0'; // Supprimer le saut de ligne
+                
+                // Vérification minimale
+                if (strlen(password) == 0) {
+                    printf("Erreur : le mot de passe ne peut pas être vide.\n");
+                    exit(1);
+                }
+
                 strncpy(fs->group[i].user, current_own, NAME_SIZE);
                 fs->group[i].user[NAME_SIZE - 1] = '\0'; // Garantir la terminaison de la chaîne
+                strncpy(fs->group[i].password, password, MAX_PASSWORD);
+                fs->group[i].password[MAX_PASSWORD - 1] = '\0';
                 fs->group[i].taille = 0; // Initialiser le nombre de groupes à 0
                 user_add_group(fs, current_own); // Ajouter l'utilisateur au groupe par défaut
                 found_free_slot = 1;
-                printf("Nouvel utilisateur '%s' créé.\n", current_own);        
-                create_directory(fs,current_own);
+                create_directory(fs, current_own); // Crée ./users/home/<username>
+                printf("Nouvel utilisateur '%s' créé.\n", current_own); 
                 good = 1;       
-                delete_directory(fs, current_own);
                 save_filesystem(fs); // Sauvegarder le système de fichiers
                 break;
             }
@@ -1669,7 +1926,6 @@ void init_main(Filesystem *fs) {
     if (good) {
         // Réinitialiser le chemin courant avant de créer le répertoire
         strncpy(fs->current_directory, "./users/home", MAX_FILENAME);
-        create_directory(fs, current_own); // Crée ./users/home/<username>
         // Mettre à jour le chemin courant
         snprintf(fs->current_directory, MAX_FILENAME*2, "./users/home/%s", current_own);
         strncpy(current_group, current_own, sizeof(current_group));  
