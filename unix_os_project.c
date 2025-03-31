@@ -99,6 +99,9 @@ void save_filesystem(Filesystem *fs);
 void create_directory(Filesystem *fs, const char *dirname);
 void user_add_group(Filesystem *fs, const char *groupname);
 Inode* get_inode_by_name(Filesystem *fs, const char *filename);
+char* extract_path(const char* full_path);
+char* last_element(const char* full_path);
+void reset_user_workspace(Filesystem *fs, const char *username);
 
 // Fonction pour créer un groupe dans ./user/groups s'il n'existe pas
 void create_group_directory(Filesystem *fs, const char *groupname) {
@@ -343,7 +346,7 @@ void delete_directory(Filesystem *fs, const char *dirname) {
             }
             fs->inode_count--;
             save_filesystem(fs);
-            printf("Répertoire '%s' supprimé.\n", path);
+            printf("Répertoire '%s' supprimé.\n", last_element(path));
             return;
         }
     }
@@ -1082,6 +1085,12 @@ char* extract_path(const char* full_path) {
     return (char*)full_path;
 }
 
+// Fonction pour extraire le chemin relatif
+char* last_element(const char* full_path) {
+    char* dernier = strrchr(full_path,'/');
+    return (dernier !=NULL)? dernier +1 :  (char*)full_path;
+}
+
 // Fonction pour copier un répertoire
 void copy_repertoire(Filesystem *fs, const char *repertoirenamedepart, const char *repertoirenamefinal, const char *nomrepertoire) {
     char full_path_source[MAX_FILENAME * 2];
@@ -1497,31 +1506,12 @@ void delete_user_account(Filesystem *fs, const char *username) {
     }
 
     // Supprimer le répertoire personnel
-    char user_home_path[MAX_PATH];
-    snprintf(user_home_path, sizeof(user_home_path), "./users/home/%s", username);
-    delete_directory(fs, user_home_path);
-
-    // Supprimer l'utilisateur de la table des groupes
-    memset(&fs->group[user_index], 0, sizeof(User_Group));
-
-    // Supprimer tous ses fichiers/dossiers
-    for (int i = 0; i < fs->inode_count; ) {
-        if (strcmp(fs->inodes[i].owner, username) == 0) {
-            if (fs->inodes[i].is_directory) {
-                delete_directory(fs, fs->inodes[i].name);
-            } else {
-                delete_file(fs, fs->inodes[i].name);
-            }
-            // Ne pas incrémenter `i` car la suppression réduit `inode_count`
-        } else {
-            i++;
-        }
-    }
-
+    snprintf(fs->current_directory, sizeof("./users/home"), "./users/home");
+    delete_directory(fs, username);
+    strcpy(current_own, "\0");
+    strcpy(current_group, "\0");
     // Déconnecter l'utilisateur
     printf("Compte '%s' supprimé. Déconnexion...\n", username);
-    strcpy(current_own, "");
-    strcpy(current_group, "");
 
     save_filesystem(fs);
 }
@@ -1549,14 +1539,13 @@ void reset_user_workspace(Filesystem *fs, const char *username) {
     // Parcourir tous les fichiers/dossiers de l'utilisateur
     for (int i = 0; i < fs->inode_count; ) {
         // Si le fichier/dossier appartient à l'utilisateur ET n'est pas son dossier home
-        if (strcmp(fs->inodes[i].owner, username) == 0 && 
-            strcmp(fs->inodes[i].name, user_home_path) != 0) {
-            
+        if (strcmp(fs->inodes[i].owner, username) == 0) {
+            strncpy(fs->current_directory, user_home_path, sizeof(user_home_path));
             // Supprimer le fichier ou le répertoire
             if (fs->inodes[i].is_directory) {
-                delete_directory(fs, fs->inodes[i].name);
+                delete_directory(fs, last_element(fs->inodes[i].name));
             } else {
-                delete_file(fs, fs->inodes[i].name);
+                delete_file(fs, last_element(fs->inodes[i].name));
             }
             // Ne pas incrémenter `i` car la suppression réduit `fs->inode_count`
         } else {
@@ -1739,6 +1728,7 @@ void shell(Filesystem *fs, char *current_own) {
             if (verify_sudo_password(fs, current_own)) {
                 delete_user_account(fs, command + 13);
                 sudo = 0; // Réinitialiser le mode sudo
+                break;
             } else {
                 continue;
             }
