@@ -23,6 +23,14 @@
 #define MAX_PATH 50                         // Taille maximale du chemin
 #define GROUP_FILE "./users/groups"         // Répertoire des groupes
 #define MAX_PASSWORD 50                     // Taille maximale du mot de passe
+#define MAX_HISTORY 100  // Nombre maximum de commandes dans l'historique
+#define MAX_CMD_LENGTH 100  // Longueur maximale d'une commande
+
+typedef struct {
+    char commands[MAX_HISTORY][MAX_CMD_LENGTH];
+    int count;
+    int current;  // Pour la navigation dans l'historique
+} CommandHistory;
 
 // Définition de la structure d'un tableau
 typedef struct{
@@ -39,6 +47,7 @@ typedef struct {
 typedef struct {
     char name[MAX_FILENAME];          // Nom du fichier ou du répertoire
     int is_directory;                 // Indicateur si c'est un répertoire (1) ou un fichier (0)
+    int is_group;                     // Indicateur si c'est un groupe     
     int size;                         // Taille du fichier en octets
     char group[GROUP_SIZE];           // Groupe associé fichier ou du répertoire
     time_t creation_time;             // Date de création
@@ -75,6 +84,7 @@ typedef struct {
     int inode_count;                  // Nombre d'inodes utilisés
     int group_count;                  // Nombre de groupes utilisés
     char current_directory[MAX_PATH]; // Répertoire actuel
+    CommandHistory history;           // Historique des commandes
 } Filesystem;
 
 // Structure pour associer un nom de fichier à un inode
@@ -102,6 +112,7 @@ Inode* get_inode_by_name(Filesystem *fs, const char *filename);
 char* extract_path(const char* full_path);
 char* last_element(const char* full_path);
 void reset_user_workspace(Filesystem *fs, const char *username);
+void create_directory_group(Filesystem *fs, const char *dirname);
 
 // Fonction pour créer un groupe dans ./user/groups s'il n'existe pas
 void create_group_directory(Filesystem *fs, const char *groupname) {
@@ -122,7 +133,7 @@ void create_group_directory(Filesystem *fs, const char *groupname) {
 
     // Créer le répertoire du groupe
     strcpy(fs->current_directory, "./users/groups");
-    create_directory(fs, groupname);
+    create_directory_group(fs, groupname);
 
     // Restaurer le répertoire courant
     strcpy(fs->current_directory, current_dir_backup);
@@ -283,6 +294,10 @@ void create_directory(Filesystem *fs, const char *dirname) {
         printf("Nombre maximum de fichiers atteint !\n");
         return;
     }
+    if (strcmp(fs->current_directory,GROUP_FILE) == 0) {
+        printf("Utilise la commande crtgroup <nom>\n");
+        return;
+    }
     strcpy(permissions, "drw-------");
 
     // Construire le chemin complet
@@ -305,6 +320,61 @@ void create_directory(Filesystem *fs, const char *dirname) {
     fs->inodes[fs->inode_count].creation_time = now;
     fs->inodes[fs->inode_count].modification_time = now;
     fs->inodes[fs->inode_count].num_liens = 0;
+    fs->inodes[fs->inode_count].is_group = 0;
+
+    strncpy(fs->inodes[fs->inode_count].owner, current_own, strlen(current_own));
+    strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
+    strncpy(fs->inodes[fs->inode_count].group, current_group, strlen(current_group));
+
+    
+    for (int i = 0; i < NUM_LIEN_MAX; i++) {
+        for (int j = 0; j < MAX_FILENAME; j++) {
+            fs->inodes[fs->inode_count].lien.hardLink[i].data[j] = '\0'; // Initialiser les liens physiques a vide
+        }     
+    }
+    for (int i = 0; i < NUM_LIEN_MAX; i++) {
+        for (int j = 0; j < MAX_FILENAME; j++) {
+            fs->inodes[fs->inode_count].lien.symbolicLink[i].data[j] = '\0'; // Initialiser les liens physiques a vide
+        }     
+    }
+
+    fs->inode_count++;
+
+    save_filesystem(fs);
+    //printf("Répertoire '%s' créé.\n", path);
+    //pthread_mutex_unlock(&fs_mutex); // Déverrouiller avant de retourner
+}
+
+// Fonction pour créer un répertoire de groupe
+void create_directory_group(Filesystem *fs, const char *dirname) {
+    if (fs->inode_count >= MAX_FILES) {
+        printf("Nombre maximum de fichiers atteint !\n");
+        return;
+    }
+    strcpy(permissions, "drw-------");
+
+    // Construire le chemin complet
+    char path[MAX_FILENAME * 2];
+    if (strcmp(fs->current_directory, "\0") == 0) {
+        snprintf(path, sizeof(path), "%s", dirname);
+    }     
+    if (strcmp(fs->current_directory, ".") == 0) {
+        snprintf(path, sizeof(path), "./%s", dirname);
+    } else {
+        snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
+    }
+
+    strcpy(fs->inodes[fs->inode_count].name, path);
+    fs->inodes[fs->inode_count].is_directory = 1;
+    fs->inodes[fs->inode_count].size = 0;
+
+    // Initialisation des métadonnées
+    time_t now = time(NULL); // Récupère l'heure actuelle
+    fs->inodes[fs->inode_count].creation_time = now;
+    fs->inodes[fs->inode_count].modification_time = now;
+    fs->inodes[fs->inode_count].num_liens = 0;
+    fs->inodes[fs->inode_count].is_group = 1;
+
     strncpy(fs->inodes[fs->inode_count].owner, current_own, strlen(current_own));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
     strncpy(fs->inodes[fs->inode_count].group, current_group, strlen(current_group));
@@ -492,6 +562,8 @@ void create_file(Filesystem *fs, const char *filename, size_t size, const char *
     fs->inodes[fs->inode_count].creation_time = now;
     fs->inodes[fs->inode_count].modification_time = now;
     fs->inodes[fs->inode_count].num_liens = 0;
+    fs->inodes[fs->inode_count].is_directory = 0;
+    fs->inodes[fs->inode_count].is_group = 0; 
     strncpy(fs->inodes[fs->inode_count].owner, owner, strlen(owner));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
     strncpy(fs->inodes[fs->inode_count].group, current_group, strlen(current_group));
@@ -1516,7 +1588,7 @@ void delete_user_account(Filesystem *fs, const char *username) {
     save_filesystem(fs);
 }
 
-// Réinitialise le répertoire de travail d'un utilisateur (supprime tout sauf son dossier home)
+// Fonction pour réinitialise le répertoire de travail d'un utilisateur (supprime tout sauf son dossier home)
 void reset_user_workspace(Filesystem *fs, const char *username) {
     // Vérifier si l'utilisateur existe
     int user_exists = 0;
