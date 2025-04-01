@@ -6,7 +6,7 @@
 //#include <pthread.h> // Pour les threads
 
 // Définition des constantes
-#define MAX_FILES 100                       // Nombre maximal de fichiers
+#define MAX_FILES 1000                      // Nombre maximal de fichiers
 #define MAX_FILENAME 50                     // Taille maximale du nom de fichier
 #define MAX_DIRECTORY 50                    // Taille maximale du nom de répertoire
 #define FILESYSTEM_FILE "my_filesystem.dat" // Nom du fichier contenant le système de fichiers
@@ -106,13 +106,14 @@ int sudo = 0;                    // Indicateur pour le mode super utilisateur
 
 
 void save_filesystem(Filesystem *fs);
-void create_directory(Filesystem *fs, const char *dirname);
+void create_directory(Filesystem *fs, const char *dirname, const char *destname);
 void user_add_group(Filesystem *fs, const char *groupname);
 Inode* get_inode_by_name(Filesystem *fs, const char *filename);
 char* extract_path(const char* full_path);
 char* last_element(const char* full_path);
 void reset_user_workspace(Filesystem *fs, const char *username);
 void create_directory_group(Filesystem *fs, const char *dirname);
+void create_directory_home(Filesystem *fs, const char *dirname, const char *destname);
 
 // Fonction pour créer un groupe dans ./user/groups s'il n'existe pas
 void create_group_directory(Filesystem *fs, const char *groupname) {
@@ -258,14 +259,14 @@ void init_filesystem(Filesystem *fs) {
         fs->inode_count = 0;
         fs->group_count = 0;
         strcpy(fs->current_directory, "\0");  // Chaîne vide
-        create_directory(fs, ".");
+        create_directory_home(fs, ".",NULL);
         strcpy(fs->current_directory, ".");
         init_superblock(); // Initialiser le superbloc
-        create_directory(fs, "users"); // Créer le répertoire des utilisateurs
+        create_directory_home(fs, "users",NULL); // Créer le répertoire des utilisateurs
         strcpy(fs->current_directory, "./users");
-        create_directory(fs, "groups"); // Créer le répertoire des groupes
-        create_directory(fs, "home"); // Créer le répertoire home
-        create_directory(fs, "local"); // Créer le répertoire local
+        create_directory_home(fs, "groups",NULL); // Créer le répertoire des groupes
+        create_directory_home(fs, "home",NULL); // Créer le répertoire home
+        create_directory_home(fs, "local",NULL); // Créer le répertoire local
         strcpy(fs->current_directory, "./users/home");
         save_filesystem(fs);
         printf("Système de fichiers initialisé : %s\n", fs->current_directory);
@@ -289,7 +290,70 @@ void print_free_blocks() {
 }
 
 // Fonction pour créer un répertoire
-void create_directory(Filesystem *fs, const char *dirname) {
+void create_directory_home(Filesystem *fs, const char *dirname, const char *destname) {
+    if (fs->inode_count >= MAX_FILES) {
+        printf("Nombre maximum de fichiers atteint !\n");
+        return;
+    }
+    if (strcmp(fs->current_directory,GROUP_FILE) == 0) {
+        printf("Utilise la commande crtgroup <nom>\n");
+        return;
+    }
+    strcpy(permissions, "drwxrwxrwx");
+
+    // Construire le chemin complet
+    char path[MAX_FILENAME * 2];
+    if (destname == NULL) {
+        if (strcmp(fs->current_directory, "\0") == 0) {
+            snprintf(path, sizeof(path), "%s", dirname);
+        }     
+        else if (strcmp(fs->current_directory, ".") == 0) {
+            snprintf(path, sizeof(path), "./%s", dirname);
+        }  
+        else {
+            snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
+        }
+    }  
+    else {
+        snprintf(path, sizeof(path), "%s/%s/%s", fs->current_directory, destname, dirname);
+    }
+
+    strcpy(fs->inodes[fs->inode_count].name, path);
+    fs->inodes[fs->inode_count].is_directory = 1;
+    fs->inodes[fs->inode_count].size = 0;
+
+    // Initialisation des métadonnées
+    time_t now = time(NULL); // Récupère l'heure actuelle
+    fs->inodes[fs->inode_count].creation_time = now;
+    fs->inodes[fs->inode_count].modification_time = now;
+    fs->inodes[fs->inode_count].num_liens = 0;
+    fs->inodes[fs->inode_count].is_group = 0;
+
+    strncpy(fs->inodes[fs->inode_count].owner, current_own, strlen(current_own));
+    strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
+    strncpy(fs->inodes[fs->inode_count].group, current_group, strlen(current_group));
+
+    
+    for (int i = 0; i < NUM_LIEN_MAX; i++) {
+        for (int j = 0; j < MAX_FILENAME; j++) {
+            fs->inodes[fs->inode_count].lien.hardLink[i].data[j] = '\0'; // Initialiser les liens physiques a vide
+        }     
+    }
+    for (int i = 0; i < NUM_LIEN_MAX; i++) {
+        for (int j = 0; j < MAX_FILENAME; j++) {
+            fs->inodes[fs->inode_count].lien.symbolicLink[i].data[j] = '\0'; // Initialiser les liens physiques a vide
+        }     
+    }
+
+    fs->inode_count++;
+
+    save_filesystem(fs);
+    //printf("Répertoire '%s' créé.\n", path);
+    //pthread_mutex_unlock(&fs_mutex); // Déverrouiller avant de retourner
+}
+
+// Fonction pour créer un répertoire
+void create_directory(Filesystem *fs, const char *dirname, const char *destname) {
     if (fs->inode_count >= MAX_FILES) {
         printf("Nombre maximum de fichiers atteint !\n");
         return;
@@ -299,16 +363,48 @@ void create_directory(Filesystem *fs, const char *dirname) {
         return;
     }
     strcpy(permissions, "drw-------");
+    
+    char perm = 'w';
 
     // Construire le chemin complet
     char path[MAX_FILENAME * 2];
-    if (strcmp(fs->current_directory, "\0") == 0) {
-        snprintf(path, sizeof(path), "%s", dirname);
-    }     
-    if (strcmp(fs->current_directory, ".") == 0) {
-        snprintf(path, sizeof(path), "./%s", dirname);
-    } else {
-        snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
+    if (destname == NULL) {
+        if (strcmp(fs->current_directory, "\0") == 0) {
+            snprintf(path, sizeof(path), "%s", dirname);
+        }     
+        else if (strcmp(fs->current_directory, ".") == 0) {
+            snprintf(path, sizeof(path), "./%s", dirname);
+        }  
+        else {    
+            // Vérifie si un répertoire existe déjà 
+            for (int i = 0; i < fs->inode_count; i++) {
+                if (strcmp(fs->inodes[i].name, fs->current_directory) == 0 && fs->inodes[i].is_directory) {
+                    if ((fs->inodes[i].permissions[2] == perm && strcmp(fs->inodes[i].owner, current_own)== 0) || (fs->inodes[i].permissions[8] == perm)) {
+                        snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
+                    } 
+                    else { 
+                        printf("Accès refusé : %s est un répertoire privé!\n", fs->current_directory);
+                        return;
+                    }
+                }
+            }
+        }
+    }  
+    else { 
+        // Vérifie si un répertoire existe déjà 
+        char path_rep[MAX_FILENAME * 2];
+        snprintf(path_rep, sizeof(path_rep), "%s/%s", fs->current_directory, destname);
+        for (int i = 0; i < fs->inode_count; i++) {
+            if (strcmp(fs->inodes[i].name, path_rep) == 0 && fs->inodes[i].is_directory) {
+                if ((fs->inodes[i].permissions[2] == perm && strcmp(fs->inodes[i].owner, current_own) == 0) || (fs->inodes[i].permissions[8] == perm)) {
+                        snprintf(path, sizeof(path), "%s/%s/%s", fs->current_directory, destname, dirname);
+                } 
+                else { 
+                    printf("Accès refusé : %s est un répertoire privé!\n", path_rep);
+                    return;
+                }                
+            }
+        }
     }
 
     strcpy(fs->inodes[fs->inode_count].name, path);
@@ -406,9 +502,9 @@ void delete_directory(Filesystem *fs, const char *dirname) {
      //   return;
     //}
     char path[MAX_FILENAME * 2];
-    snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
+    //snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
 
-    if (strncmp(dirname, "/home/", strlen("/home/")) == 0) {  
+    if (strncmp(dirname, "./users/home/", strlen("./users/home/")) == 0) {  
         snprintf(path, sizeof(path), "%s", dirname);
     } else {
         snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
@@ -491,7 +587,7 @@ void change_directory(Filesystem *fs, const char *dirname) {
     // Accès au répertoire home
     if (strcmp(fs->current_directory, "./users/home") == 0) {
         if (inod != NULL && inod->permissions[7] != perm) {
-            if (strcmp(dirname, current_own) != 0) {
+            if (strcmp(inod->owner, current_own) != 0) {
                 printf("Accès refusé : %s est un répertoire privé!\n", dirname);
                 return;
             }
@@ -500,20 +596,16 @@ void change_directory(Filesystem *fs, const char *dirname) {
     
     // Accès aux groupes
     if (strcmp(fs->current_directory, "./users/groups") == 0) {
-        if (inod != NULL && strcmp(dirname, "..") != 0 && 
-            !is_user_in_group(fs, current_own, dirname) && 
+        if (inod != NULL && strcmp(dirname, "..") != 0 &&  !is_user_in_group(fs, current_own, dirname) && 
             inod->permissions[6] != perm) {
             printf("Accès refusé : %s est un groupe privé ou vous n'en faites pas partie!\n", dirname);
             return;
         }
     }
 
-
-
     // Construction du nouveau chemin
     char path[MAX_FILENAME * 2];
-    if (strcmp(fs->current_directory, "./") == 0 || 
-        strcmp(fs->current_directory, ".") == 0) {
+    if (strcmp(fs->current_directory, "./") == 0 || strcmp(fs->current_directory, ".") == 0) {
         // Cas spécial pour la racine
         snprintf(path, sizeof(path), "./%s", dirname);
     } else {
@@ -788,7 +880,7 @@ Inode* get_inode_by_name(Filesystem *fs, const char *filename) {
     }
 
     // Si le fichier n'est pas trouvé, retourner NULL
-    printf("Fichier '%s' introuvable.\n", filename);
+    //printf("Fichier ou répertoire '%s' introuvable.\n", filename);
     return NULL;
 }
 
@@ -1254,7 +1346,7 @@ void copy_repertoire(Filesystem *fs, const char *repertoirenamedepart, const cha
 
             // Copier le fichier ou répertoire
             if (fs->inodes[i].is_directory) {
-                create_directory(fs, extract_path(new_path));
+                create_directory(fs, extract_path(new_path),NULL);
             } else {
                 // Copier le fichier
                 int taille = BLOCK_SIZE * fs->inodes[i].block_count;
@@ -1935,7 +2027,20 @@ void shell(Filesystem *fs, char *current_own) {
         } else if (strncmp(command, "pwd", 3) == 0) {
             printf("%s\n", fs->current_directory);
         } else if (strncmp(command, "mkdir", 5) == 0) {
-            create_directory(fs, command + 6);
+            char createdirname[MAX_DIRECTORY];
+            char finaldirename[MAX_DIRECTORY];
+
+            // Initialiser les variables à des chaînes vides pour éviter les erreurs
+            createdirname[0] = '\0';
+            finaldirename[0] = '\0';
+            int count = sscanf(command + 6, "%s %s", createdirname, finaldirename);
+            // Vérifier si le répertoire a été fourni ou non
+            if (count < 2 || strlen(finaldirename) == 0) {
+                create_directory(fs, createdirname, NULL);
+            } else {
+                create_directory(fs, createdirname, finaldirename);
+            }
+
         } else if (strncmp(command, "rmdir", 5) == 0) {
             delete_directory(fs, command + 6);
         } else if (strncmp(command, "cpdir", 5) == 0) {
@@ -2126,7 +2231,7 @@ void init_main(Filesystem *fs) {
                 fs->group[i].taille = 0; // Initialiser le nombre de groupes à 0
                 user_add_group(fs, current_own); // Ajouter l'utilisateur au groupe par défaut
                 found_free_slot = 1;
-                create_directory(fs, current_own); // Crée ./users/home/<username>
+                create_directory(fs, current_own, NULL); // Crée ./users/home/<username>
                 printf("Nouvel utilisateur '%s' créé.\n", current_own); 
                 good = 1;       
                 save_filesystem(fs); // Sauvegarder le système de fichiers
