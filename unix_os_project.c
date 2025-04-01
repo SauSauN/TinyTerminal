@@ -1752,6 +1752,98 @@ int verify_sudo_password(Filesystem* fs, const char* current_own) {
     return 1;
 }
 
+// Fonction pour créer un lien matériel
+void create_hard_link(Filesystem *fs, const char *existing_file, const char *new_link) {
+    char full_path_source[MAX_FILENAME * 2];
+    char full_path_dest[MAX_FILENAME * 2];
+
+    // Construire les chemins complets
+    snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, existing_file);
+    snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", fs->current_directory, new_link);
+
+    // Vérifier si le fichier source existe
+    Inode *source_inode = NULL;
+    //int source_index = -1;
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && !fs->inodes[i].is_directory) {
+            source_inode = &fs->inodes[i];
+            //source_index = i;
+            break;
+        }
+    }
+
+    if (!source_inode) {
+        printf("Fichier source '%s' introuvable ou est un répertoire.\n", existing_file);
+        return;
+    }
+
+    // Vérifier si le lien de destination existe déjà
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, full_path_dest) == 0) {
+            printf("Le fichier de destination '%s' existe déjà.\n", new_link);
+            return;
+        }
+    }
+
+    // Vérifier si le nombre maximal de liens est atteint
+    if (source_inode->num_liens >= NUM_LIEN_MAX) {
+        printf("Nombre maximal de liens atteint pour le fichier '%s'.\n", existing_file);
+        return;
+    }
+
+    // Ajouter l'entrée du lien matériel dans la structure du fichier source
+    strncpy(source_inode->lien.hardLink[source_inode->num_liens].data, full_path_dest, MAX_FILENAME);
+    source_inode->num_liens++;
+
+    // Créer une nouvelle entrée d'inode pour le lien
+    if (fs->inode_count >= MAX_FILES) {
+        printf("Nombre maximum de fichiers atteint !\n");
+        return;
+    }
+
+    // Copier toutes les métadonnées du fichier source
+    Inode *dest_inode = &fs->inodes[fs->inode_count];
+    strcpy(dest_inode->name, full_path_dest);
+    dest_inode->is_directory = 0;
+    dest_inode->size = source_inode->size;
+    dest_inode->creation_time = time(NULL); // Le lien a sa propre date de création
+    dest_inode->modification_time = source_inode->modification_time;
+    strncpy(dest_inode->owner, source_inode->owner, MAX_FILENAME);
+    strncpy(dest_inode->permissions, source_inode->permissions, PERM_SIZE);
+    strncpy(dest_inode->group, source_inode->group, GROUP_SIZE);
+    dest_inode->num_liens = source_inode->num_liens;
+
+    // Copier les références aux mêmes blocs de données (crucial pour les liens matériels)
+    dest_inode->block_count = source_inode->block_count;
+    for (int i = 0; i < source_inode->block_count; i++) {
+        dest_inode->block_indices[i] = source_inode->block_indices[i];
+    }
+
+    // Copier les liens existants
+    for (int i = 0; i < source_inode->num_liens; i++) {
+        strncpy(dest_inode->lien.hardLink[i].data, source_inode->lien.hardLink[i].data, MAX_FILENAME);
+    }
+
+    // Ajouter le nouveau lien à tous les autres liens existants
+    for (int i = 0; i < fs->inode_count; i++) {
+        for (int j = 0; j < fs->inodes[i].num_liens; j++) {
+            if (strcmp(fs->inodes[i].lien.hardLink[j].data, full_path_source) == 0) {
+                // Ajouter le nouveau lien à cet inode également
+                strncpy(fs->inodes[i].lien.hardLink[fs->inodes[i].num_liens].data, full_path_dest, MAX_FILENAME);
+                fs->inodes[i].num_liens++;
+                break;
+            }
+        }
+    }
+
+    // Incrémenter le nombre d'inodes
+    fs->inode_count++;
+
+    // Sauvegarder le système de fichiers
+    save_filesystem(fs);
+    printf("Lien matériel '%s' créé pour le fichier '%s'.\n", new_link, existing_file);
+}
+
 // Fonction pour afficher l'aide
 void help() {
     printf("Commandes disponibles :\n");
@@ -1838,16 +1930,43 @@ void shell(Filesystem *fs, char *current_own) {
             break;
         } else if (strncmp(command, "help", 4) == 0) {
             help();
-        } else if (strncmp(command, "passwd", 6) == 0 || strncmp(command, "chgpasswd", 9) == 0 || strncmp(command, "sudo passwd", 11) == 0 || strncmp(command, "deluser", 7) == 0  || strncmp(command, "resetuser", 9) == 0) {
+        } else if (strncmp(command, "passwd", 6) == 0 || strncmp(command, "chgpasswd", 9) == 0 || strncmp(command, "deluser", 7) == 0  || strncmp(command, "resetuser", 9) == 0) {
             printf("Erreur : Cette commande fonctionne uniquement avec sudo\n");
         } else if (strncmp(command, "pwd", 3) == 0) {
             printf("%s\n", fs->current_directory);
-        } else if (strncmp(command, "resetuser", 9) == 0) {
-            printf("Erreur : Cette commande fonctionne uniquement avec sudo\n");
         } else if (strncmp(command, "mkdir", 5) == 0) {
             create_directory(fs, command + 6);
         } else if (strncmp(command, "rmdir", 5) == 0) {
             delete_directory(fs, command + 6);
+        } else if (strncmp(command, "cpdir", 5) == 0) {
+            char dirnamedepart[MAX_DIRECTORY];
+            char direnamefinal[MAX_DIRECTORY];
+            char repertoire[MAX_DIRECTORY];
+
+            // Initialiser les variables à des chaînes vides pour éviter les erreurs
+            dirnamedepart[0] = '\0';
+            direnamefinal[0] = '\0';
+            repertoire[0] = '\0';
+        
+            int count = sscanf(command + 6, "%s %s %s", dirnamedepart, direnamefinal, repertoire);
+        
+            // Vérifier si toutes les valeurs ont été correctement lues
+            if (count < 2) { 
+                printf("Erreur : commande incorrecte. Format attendu : cpdir <source> <destination> [répertoire]\n");
+                return;
+            }
+        
+            // Vérifier si le répertoire a été fourni ou non
+            if (count < 3 || strlen(repertoire) == 0) {
+                copy_repertoire(fs, dirnamedepart, direnamefinal, NULL);
+            } else {
+                copy_repertoire(fs, dirnamedepart, direnamefinal, repertoire);
+            }
+        } else if (strncmp(command, "mvdir", 5) == 0) {
+            char repertoirename[MAX_DIRECTORY];
+            char nomrepertoire[MAX_DIRECTORY];
+            sscanf(command + 6, "%s %s", repertoirename, nomrepertoire);
+            move_directory(fs, repertoirename, nomrepertoire);
         } else if (strncmp(command, "cd", 2) == 0) {
             change_directory(fs, command + 3);
         } else if (strncmp(command, "lsgroups", 8) == 0) {
@@ -1915,36 +2034,7 @@ void shell(Filesystem *fs, char *current_own) {
             char nomrepertoire[MAX_DIRECTORY];
             sscanf(command + 3, "%s %s", filename, nomrepertoire);
             move_file(fs, filename, nomrepertoire);
-        } else if (strncmp(command, "cpdir", 5) == 0) {
-            char dirnamedepart[MAX_DIRECTORY];
-            char direnamefinal[MAX_DIRECTORY];
-            char repertoire[MAX_DIRECTORY];
-
-            // Initialiser les variables à des chaînes vides pour éviter les erreurs
-            dirnamedepart[0] = '\0';
-            direnamefinal[0] = '\0';
-            repertoire[0] = '\0';
-        
-            int count = sscanf(command + 6, "%s %s %s", dirnamedepart, direnamefinal, repertoire);
-        
-            // Vérifier si toutes les valeurs ont été correctement lues
-            if (count < 2) { 
-                printf("Erreur : commande incorrecte. Format attendu : cpdir <source> <destination> [répertoire]\n");
-                return;
-            }
-        
-            // Vérifier si le répertoire a été fourni ou non
-            if (count < 3 || strlen(repertoire) == 0) {
-                copy_repertoire(fs, dirnamedepart, direnamefinal, NULL);
-            } else {
-                copy_repertoire(fs, dirnamedepart, direnamefinal, repertoire);
-            }
-        } else if (strncmp(command, "mvdir", 5) == 0) {
-            char repertoirename[MAX_DIRECTORY];
-            char nomrepertoire[MAX_DIRECTORY];
-            sscanf(command + 6, "%s %s", repertoirename, nomrepertoire);
-            move_directory(fs, repertoirename, nomrepertoire);
-        } else if (strncmp(command, "free", 3) == 0) {
+        } else if (strncmp(command, "free", 4) == 0) {
             print_free_blocks();
         } else if (strncmp(command, "del", 3) == 0) {
             user_delete_group(fs, command + 4);
@@ -1970,7 +2060,12 @@ void shell(Filesystem *fs, char *current_own) {
             show_current_group();
         } else if (strncmp(command, "crtgroup", 8) == 0) {          
             create_group_directory(fs, command + 9);
-        } else {
+        } else if (strncmp(command, "lnm", 3) == 0) {
+            char source_file[MAX_FILENAME];
+            char link_name[MAX_FILENAME];
+            sscanf(command + 4, "%s %s", source_file, link_name);
+            create_hard_link(fs, source_file, link_name);
+        }  else {
             printf("Commande inconnue !\n");
         }
     }
