@@ -23,8 +23,8 @@
 #define MAX_PATH 50                         // Taille maximale du chemin
 #define GROUP_FILE "./users/groups"         // Répertoire des groupes
 #define MAX_PASSWORD 50                     // Taille maximale du mot de passe
-#define MAX_HISTORY 100  // Nombre maximum de commandes dans l'historique
-#define MAX_CMD_LENGTH 100  // Longueur maximale d'une commande
+#define MAX_HISTORY 100                     // Nombre maximum de commandes dans l'historique
+#define MAX_CMD_LENGTH 100                  // Longueur maximale d'une commande
 
 typedef struct {
     char commands[MAX_HISTORY][MAX_CMD_LENGTH];
@@ -96,12 +96,12 @@ typedef struct {
 // Variables globales
 superblock sb; 
 char block_data[NUM_BLOCKS][BLOCK_SIZE]; // Tableau pour stocker les données des fichiers
-file_entry file_table[NUM_INODES];      // Table des noms de fichiers
+file_entry file_table[NUM_INODES];       // Table des noms de fichiers
 
-char current_own[NAME_SIZE];  // Utilisateur actuel
+char current_own[NAME_SIZE];     // Utilisateur actuel
 char current_group[GROUP_SIZE];  // Utilisateur actuel
-char permissions[PERM_SIZE];  // Permissions par défaut
-int sudo = 0; // Indicateur pour le mode super utilisateur
+char permissions[PERM_SIZE];     // Permissions par défaut
+int sudo = 0;                    // Indicateur pour le mode super utilisateur
 //pthread_mutex_t fs_mutex = PTHREAD_MUTEX_INITIALIZER; // Mutex pour la synchronisation
 
 
@@ -400,6 +400,11 @@ void create_directory_group(Filesystem *fs, const char *dirname) {
 
 // Fonction pour supprimer un répertoire
 void delete_directory(Filesystem *fs, const char *dirname) {
+    
+   // if (strcmp(fs->current_directory,GROUP_FILE) == 0) {
+      //  printf("Utilise la commande crtgroup <nom>\n");
+     //   return;
+    //}
     char path[MAX_FILENAME * 2];
     snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
 
@@ -649,7 +654,7 @@ void show_directory_metadata(Filesystem *fs, const char *namerep) {
 
     for (int i = 0; i < fs->inode_count; i++) {
         if (strcmp(fs->inodes[i].name, full_path) == 0 && fs->inodes[i].is_directory == 1) {
-            printf("Métadonnées de '%s':\n", full_path);
+            printf("  Métadonnées de '%s':\n", full_path);
             printf("  Propriétaire: %s\n", fs->inodes[i].owner);
             printf("  Groupe: %s\n", fs->inodes[i].group);
             printf("  Permissions: %s\n", fs->inodes[i].permissions);
@@ -1535,8 +1540,7 @@ void change_group(Filesystem *fs, const char *groupname) {
     }
 
     if (!group_found) {
-        printf("Erreur : le groupe '%s' n'existe pas pour l'utilisateur '%s'.\n", 
-               groupname, current_own);
+        printf("Erreur : le groupe '%s' n'existe pas pour l'utilisateur '%s'.\n", groupname, current_own);
         return;
     }
 
@@ -1580,6 +1584,23 @@ void delete_user_account(Filesystem *fs, const char *username) {
     // Supprimer le répertoire personnel
     snprintf(fs->current_directory, sizeof("./users/home"), "./users/home");
     delete_directory(fs, username);
+    // Vérifier si l'utilisateur existe déjà dans la table des groupes
+    int user_exists = 0;
+    int inode = 0;
+
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, current_own) == 0) {
+            user_exists = 1; // L'utilisateur existe
+            inode = i; 
+            break;
+        }
+    }
+    if (user_exists) {
+        strcpy(fs->group[inode].user, "\0");
+    }
+
+
+
     strcpy(current_own, "\0");
     strcpy(current_group, "\0");
     // Déconnecter l'utilisateur
@@ -1775,7 +1796,7 @@ void shell(Filesystem *fs, char *current_own) {
     char command[100];
 
     printf("\nBienvenue dans le système de fichiers %s!\n", current_own);
-    printf("Système de fichiers initialisé : %s\n", fs->current_directory);
+    //printf("Système de fichiers initialisé : %s\n", fs->current_directory);
 
     while (current_own) {
         printf("\n%s> ", fs->current_directory);
