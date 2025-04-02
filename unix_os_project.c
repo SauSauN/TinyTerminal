@@ -106,6 +106,7 @@ int sudo = 0;                    // Indicateur pour le mode super utilisateur
 
 
 void save_filesystem(Filesystem *fs);
+int calculate_directory_size_recursive(Filesystem *fs, const char *dirpath);
 void create_directory(Filesystem *fs, const char *dirname, const char *destname);
 void user_add_group(Filesystem *fs, const char *groupname);
 Inode* get_inode_by_name(Filesystem *fs, const char *filename);
@@ -411,6 +412,14 @@ void create_directory(Filesystem *fs, const char *dirname, const char *destname)
         }
     }
 
+    // Vérification si le répertoire existe déjà
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, path) == 0) {
+            printf("Erreur : le répertoire '%s' existe déjà.\n", path);
+            return;
+        }
+    }
+
     strcpy(fs->inodes[fs->inode_count].name, path);
     fs->inodes[fs->inode_count].is_directory = 1;
     fs->inodes[fs->inode_count].size = 0;
@@ -631,12 +640,15 @@ void change_directory(Filesystem *fs, const char *dirname) {
 void create_file(Filesystem *fs, const char *filename, size_t size, const char *owner) {
     strcpy(permissions, "-rw-r--r--"); // Permissions par défaut 
 
-    char full_path[MAX_FILENAME * 3];        
+    char full_path[MAX_FILENAME * 3];
+    char path[MAX_FILENAME * 2];        
     if (strcmp(current_group, current_own) == 0) {
         snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, filename);
+        snprintf(path, sizeof(path), "%s", fs->current_directory);
     }
     else {
         snprintf(full_path, sizeof(full_path), "%s/%s/%s", GROUP_FILE,current_group, filename);
+        snprintf(path, sizeof(path), "%s/%s", GROUP_FILE,current_group);
     }
 
     // Vérifie si un fichier existe déjà dans le répertoire courant
@@ -681,6 +693,13 @@ void create_file(Filesystem *fs, const char *filename, size_t size, const char *
     }
 
     fs->inode_count++;
+
+    // Vérification si le répertoire existe déjà
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, path) == 0) {
+            fs->inodes[i].size = calculate_directory_size_recursive(fs,fs->inodes[i].name); 
+        }
+    }
     
     save_filesystem(fs);
     printf("Fichier '%s' créé (%zu octets).\n", full_path, size);
@@ -764,6 +783,8 @@ void show_directory_metadata(Filesystem *fs, const char *namerep) {
 
             printf("  Date de création: %s\n", creation_time);
             printf("  Date de modification: %s\n", modification_time);
+            // mettre à jour la taille du répertoire
+            fs->inodes[i].size = calculate_directory_size_recursive(fs,fs->inodes[i].name); 
             printf("  Taille: %d octets\n", fs->inodes[i].size);
             return;
         }
@@ -908,6 +929,34 @@ int count_free_blocks() {
         }
     }
     return count;
+}
+
+// Fonction récursive pour calculer la taille d'un répertoire (fichiers + sous-répertoires)
+int calculate_directory_size_recursive(Filesystem *fs, const char *dirpath) {
+    int total_size = 0;
+    size_t dirpath_len = strlen(dirpath);
+
+    for (int i = 0; i < fs->inode_count; i++) {
+        // Vérifier si le fichier/répertoire est dans ce répertoire ou ses sous-répertoires
+        if (strncmp(fs->inodes[i].name, dirpath, dirpath_len) == 0) {
+            // Pour les fichiers directs dans ce répertoire
+            if (!fs->inodes[i].is_directory && 
+                strcmp(fs->inodes[i].name, dirpath) != 0 && 
+                strchr(fs->inodes[i].name + dirpath_len + 1, '/') == NULL) {
+                total_size += fs->inodes[i].size;
+            }
+            // Pour les sous-répertoires (appel récursif)
+            else if (fs->inodes[i].is_directory && 
+                    strcmp(fs->inodes[i].name, dirpath) != 0) {
+                // Vérifier que c'est un sous-répertoire direct
+                char *subdir = fs->inodes[i].name + dirpath_len;
+                if (*subdir == '/' && strchr(subdir + 1, '/') == NULL) {
+                    total_size += calculate_directory_size_recursive(fs, fs->inodes[i].name);
+                }
+            }
+        }
+    }
+    return total_size;
 }
 
 // Fonction pour écrire du contenu dans un fichier
@@ -1563,7 +1612,12 @@ void list_all_directory(Filesystem *fs) {
         if (strcmp(fs->inodes[i].name, parent_path) == 0) {
             char modification_time[100];
             strftime(modification_time, sizeof(modification_time), "%Y-%m-%d %H:%M:%S", localtime(&fs->inodes[i].modification_time));
-            printf("%s %i %s  %s  %d  %s  %s  \n",fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, fs->inodes[i].name);
+            if (fs->inodes[i].is_directory) {
+                fs->inodes[i].size = calculate_directory_size_recursive(fs,fs->inodes[i].name); 
+                printf("%s %i %s  %s  %d  %s  %s  \n", fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, fs->inodes[i].name);
+            } else {
+                printf("%s %i %s  %s  %d  %s  %s  \n",fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, fs->inodes[i].name);
+            }
             found = 1;
             // Compter les fichiers et répertoires
             if (!fs->inodes[i].is_directory) {
