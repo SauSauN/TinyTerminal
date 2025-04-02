@@ -295,10 +295,6 @@ void create_directory_home(Filesystem *fs, const char *dirname, const char *dest
         printf("Nombre maximum de fichiers atteint !\n");
         return;
     }
-    if (strcmp(fs->current_directory,GROUP_FILE) == 0) {
-        printf("Utilise la commande crtgroup <nom>\n");
-        return;
-    }
     strcpy(permissions, "drwxrwxrwx");
 
     // Construire le chemin complet
@@ -2231,6 +2227,7 @@ void init_main(Filesystem *fs) {
                 fs->group[i].taille = 0; // Initialiser le nombre de groupes à 0
                 user_add_group(fs, current_own); // Ajouter l'utilisateur au groupe par défaut
                 found_free_slot = 1;
+                strncpy(fs->current_directory, "./users/home", MAX_FILENAME);
                 create_directory(fs, current_own, NULL); // Crée ./users/home/<username>
                 printf("Nouvel utilisateur '%s' créé.\n", current_own); 
                 good = 1;       
