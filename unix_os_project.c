@@ -106,8 +106,10 @@ int sudo = 0;                    // Indicateur pour le mode super utilisateur
 
 
 void save_filesystem(Filesystem *fs);
+void delete_file(Filesystem *fs, const char *filename);
 int calculate_directory_size_recursive(Filesystem *fs, const char *dirpath);
 void create_directory(Filesystem *fs, const char *dirname, const char *destname);
+void delete_directory(Filesystem *fs, const char *dirname);
 void user_add_group(Filesystem *fs, const char *groupname);
 Inode* get_inode_by_name(Filesystem *fs, const char *filename);
 char* extract_path(const char* full_path);
@@ -507,13 +509,101 @@ void create_directory_group(Filesystem *fs, const char *dirname) {
     //pthread_mutex_unlock(&fs_mutex); // Déverrouiller avant de retourner
 }
 
+// Fonction pour supprimer un groupe
+void delete_group(Filesystem *fs, const char *groupname) {
+    // Vérification que le nom de groupe est valide
+    if (groupname == NULL || strlen(groupname) == 0) {
+        printf("Erreur : Nom de groupe invalide.\n");
+        return;
+    }
+
+    // Vérification des permissions (sudo requis)
+    if (!sudo) {
+        printf("Erreur : Cette opération nécessite les privilèges sudo.\n");
+        printf("Utilisez 'sudo delgroup %s'\n", groupname);
+        return;
+    }
+
+    // Chemin du répertoire du groupe
+    char group_path[MAX_PATH];
+    snprintf(group_path, sizeof(group_path), "./users/groups/%s", groupname);
+
+    // Vérifier si le groupe existe
+    int group_found = 0;
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, group_path) == 0 && fs->inodes[i].is_directory) {
+            group_found = 1;
+            break;
+        }
+    }
+
+    if (!group_found) {
+        printf("Erreur : Le groupe '%s' n'existe pas.\n", groupname);
+        return;
+    }
+
+    // Sauvegarder le répertoire courant
+    char current_dir_backup[MAX_PATH];
+    strcpy(current_dir_backup, fs->current_directory);
+
+    // 1. Supprimer le répertoire du groupe
+    strcpy(fs->current_directory, "./users/groups");
+    delete_directory(fs, groupname);
+
+    // 2. Retirer le groupe de tous les utilisateurs
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strlen(fs->group[i].user) > 0) { // Si l'utilisateur existe
+            for (int j = 0; j < fs->group[i].taille; j++) {
+                if (strcmp(fs->group[i].group[j].data, groupname) == 0) {
+                    // Décaler les groupes restants
+                    for (int k = j; k < fs->group[i].taille - 1; k++) {
+                        strcpy(fs->group[i].group[k].data, fs->group[i].group[k+1].data);
+                    }
+                    fs->group[i].taille--;
+                    
+                    // Mettre à jour le groupe actuel si nécessaire
+                    if (strcmp(current_group, groupname) == 0 && 
+                        strcmp(fs->group[i].user, current_own) == 0) {
+                        strcpy(current_group, "");
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // 3. Supprimer tous les fichiers du groupe (optionnel)
+    // Cette partie peut être commentée si vous voulez garder les fichiers
+    for (int i = 0; i < fs->inode_count; ) {
+        if (strcmp(fs->inodes[i].group, groupname) == 0) {
+            char file_path[MAX_PATH];
+            strcpy(file_path, fs->inodes[i].name);
+            
+            if (fs->inodes[i].is_directory) {
+                delete_directory(fs, file_path);
+            } else {
+                delete_file(fs, file_path);
+            }
+            // Ne pas incrémenter i car la suppression réduit fs->inode_count
+        } else {
+            i++;
+        }
+    }
+
+    // Restaurer le répertoire courant
+    strcpy(fs->current_directory, current_dir_backup);
+
+    printf("Groupe '%s' supprimé avec succès.\n", groupname);
+    save_filesystem(fs);
+}
+
 // Fonction pour supprimer un répertoire
 void delete_directory(Filesystem *fs, const char *dirname) {
     
-   // if (strcmp(fs->current_directory,GROUP_FILE) == 0) {
-      //  printf("Utilise la commande crtgroup <nom>\n");
-     //   return;
-    //}
+   if (strcmp(fs->current_directory,"./users/groups/") == 0) {
+       printf("Utilise la commande delgroup <nom>\n");
+       return;
+    }
     char path[MAX_FILENAME * 2];
     //snprintf(path, sizeof(path), "%s/%s", fs->current_directory, dirname);
 
@@ -1915,6 +2005,231 @@ int verify_sudo_password(Filesystem* fs, const char* current_own) {
     return 1;
 }
 
+// Fonction pour ajouter un utilisateur à un groupe existant
+void add_user_to_group(Filesystem *fs, const char *username, const char *groupname) {
+    // Vérifications de base
+    if (username == NULL || groupname == NULL || strlen(username) == 0 || strlen(groupname) == 0) {
+        printf("Erreur : Nom d'utilisateur ou de groupe invalide.\n");
+        return;
+    }
+
+    // Vérifier que l'utilisateur courant a les droits (propriétaire ou sudo)
+    int is_owner_or_sudo = 0;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, current_own) == 0) {
+            for (int j = 0; j < fs->group[i].taille; j++) {
+                if (strcmp(fs->group[i].group[j].data, groupname) == 0) {
+                    is_owner_or_sudo = 1;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+
+    if (!is_owner_or_sudo && !sudo) {
+        printf("Erreur : Vous n'avez pas les droits pour modifier ce groupe.\n");
+        printf("Utilisez 'sudo add %s %s' si nécessaire.\n", username, groupname);
+        return;
+    }
+
+    // Vérifier que le groupe existe
+    char group_path[MAX_PATH];
+    snprintf(group_path, sizeof(group_path), "./users/groups/%s", groupname);
+    
+    int group_exists = 0;
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, group_path) == 0 && fs->inodes[i].is_directory) {
+            group_exists = 1;
+            break;
+        }
+    }
+
+    if (!group_exists) {
+        printf("Erreur : Le groupe '%s' n'existe pas.\n", groupname);
+        return;
+    }
+
+    // Trouver l'utilisateur à ajouter
+    int user_index = -1;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, username) == 0) {
+            user_index = i;
+            break;
+        }
+    }
+
+    if (user_index == -1) {
+        printf("Erreur : L'utilisateur '%s' n'existe pas.\n", username);
+        return;
+    }
+
+    // Vérifier si l'utilisateur est déjà dans le groupe
+    for (int j = 0; j < fs->group[user_index].taille; j++) {
+        if (strcmp(fs->group[user_index].group[j].data, groupname) == 0) {
+            printf("L'utilisateur '%s' fait déjà partie du groupe '%s'.\n", username, groupname);
+            return;
+        }
+    }
+
+    // Ajouter le groupe à l'utilisateur
+    if (fs->group[user_index].taille < GROUP_SIZE) {
+        strncpy(fs->group[user_index].group[fs->group[user_index].taille].data, groupname, MAX_FILENAME);
+        fs->group[user_index].taille++;
+        
+        printf("Utilisateur '%s' ajouté au groupe '%s'.\n", username, groupname);
+        save_filesystem(fs);
+    } else {
+        printf("Erreur : L'utilisateur '%s' a atteint le nombre maximal de groupes (%d).\n", 
+              username, GROUP_SIZE);
+    }
+}
+
+// Fonction pour afficher les membres d'un groupe
+void list_group_members(Filesystem *fs, const char *groupname) {
+    // Vérifications de base
+    if (groupname == NULL || strlen(groupname) == 0) {
+        printf("Erreur : Nom de groupe invalide.\n");
+        return;
+    }
+
+    // Vérifier que le groupe existe
+    char group_path[MAX_PATH];
+    snprintf(group_path, sizeof(group_path), "./users/groups/%s", groupname);
+    
+    int group_exists = 0;
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, group_path) == 0 && fs->inodes[i].is_directory) {
+            group_exists = 1;
+            break;
+        }
+    }
+
+    if (!group_exists) {
+        printf("Erreur : Le groupe '%s' n'existe pas.\n", groupname);
+        return;
+    }
+
+    // Parcourir tous les utilisateurs pour trouver ceux dans le groupe
+    printf("Membres du groupe '%s':\n", groupname);
+    int member_count = 0;
+    
+    for (int i = 0; i < NUM_USER; i++) {
+        if (fs->group[i].user[0] != '\0') { // Si l'utilisateur existe
+            for (int j = 0; j < fs->group[i].taille; j++) {
+                if (strcmp(fs->group[i].group[j].data, groupname) == 0) {
+                    printf("- %s", fs->group[i].user);
+                    if (strcmp(fs->group[i].user, current_own) == 0) {
+                        printf(" (vous)");
+                    }
+                    printf("\n");
+                    member_count++;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (member_count == 0) {
+        printf("Aucun membre dans ce groupe.\n");
+    } else {
+        printf("Total: %d membre(s)\n", member_count);
+    }
+}
+
+// Fonction pour retirer un utilisateur d'un groupe
+void remove_user_from_group(Filesystem *fs, const char *username, const char *groupname) {
+    // Vérifications de base
+    if (username == NULL || groupname == NULL || strlen(username) == 0 || strlen(groupname) == 0) {
+        printf("Erreur : Nom d'utilisateur ou de groupe invalide.\n");
+        return;
+    }
+
+    // Vérifier que l'utilisateur courant a les droits (sudo ou propriétaire du groupe)
+    int is_owner_or_sudo = 0;
+    char group_path[MAX_PATH];
+    snprintf(group_path, sizeof(group_path), "./users/groups/%s", groupname);
+
+    // Vérifier si l'utilisateur est propriétaire du groupe
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, group_path) == 0 && 
+            fs->inodes[i].is_directory && 
+            strcmp(fs->inodes[i].owner, current_own) == 0) {
+            is_owner_or_sudo = 1;
+            break;
+        }
+    }
+
+    if (!is_owner_or_sudo && !sudo) {
+        printf("Erreur : Vous n'avez pas les droits pour modifier ce groupe.\n");
+        printf("Utilisez 'sudo remove %s %s' si nécessaire.\n", username, groupname);
+        return;
+    }
+
+    // Vérifier que le groupe existe
+    int group_exists = 0;
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, group_path) == 0 && fs->inodes[i].is_directory) {
+            group_exists = 1;
+            break;
+        }
+    }
+
+    if (!group_exists) {
+        printf("Erreur : Le groupe '%s' n'existe pas.\n", groupname);
+        return;
+    }
+
+    // Trouver l'utilisateur à retirer
+    int user_index = -1;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, username) == 0) {
+            user_index = i;
+            break;
+        }
+    }
+
+    if (user_index == -1) {
+        printf("Erreur : L'utilisateur '%s' n'existe pas.\n", username);
+        return;
+    }
+
+    // Vérifier si l'utilisateur est dans le groupe
+    int group_index = -1;
+    for (int j = 0; j < fs->group[user_index].taille; j++) {
+        if (strcmp(fs->group[user_index].group[j].data, groupname) == 0) {
+            group_index = j;
+            break;
+        }
+    }
+
+    if (group_index == -1) {
+        printf("L'utilisateur '%s' ne fait pas partie du groupe '%s'.\n", username, groupname);
+        return;
+    }
+
+    // Cas spécial : on ne peut pas se retirer soi-même du groupe si c'est notre seul groupe
+    if (strcmp(username, current_own) == 0 && fs->group[user_index].taille <= 1) {
+        printf("Erreur : Vous ne pouvez pas quitter votre dernier groupe.\n");
+        return;
+    }
+
+    // Retirer le groupe de la liste de l'utilisateur
+    for (int k = group_index; k < fs->group[user_index].taille - 1; k++) {
+        strcpy(fs->group[user_index].group[k].data, fs->group[user_index].group[k+1].data);
+    }
+    fs->group[user_index].taille--;
+
+    // Si c'était le groupe actuel, le réinitialiser
+    if (strcmp(current_group, groupname) == 0 && 
+        strcmp(username, current_own) == 0) {
+        strcpy(current_group, "");
+    }
+
+    printf("Utilisateur '%s' retiré du groupe '%s'.\n", username, groupname);
+    save_filesystem(fs);
+}
+
 // Fonction pour créer un lien matériel
 void create_hard_link(Filesystem *fs, const char *existing_file, const char *new_link) {
     char full_path_source[MAX_FILENAME * 2];
@@ -2051,8 +2366,11 @@ void help() {
     printf("  chgroup <nom>...........................Change le groupe actuel\n");
     printf("  curgroup................................Affiche le groupe actuel\n");
     printf("  crtgroup <nom>..........................Crée un nouveau groupe\n");
-    printf("  add <nom>...............................Ajoute un utilisateur au groupe\n");
-    printf("  del <nom>...............................Supprime un utilisateur du groupe\n\n");
+    printf("  delgroup <nom>..........................Supprime un groupe\n");
+    printf("  quit <nom>..............................Quitter un groupe\n\n");
+    printf("  lsmembers <nom>.........................Liste les membres d'un groupe\n");
+    printf("  sudo add <pers> <nom>...................Ajoute un utilisateur au groupe\n");
+    printf("  sudo remove <pers> <nom>................Retire un utilisateur du groupe\n");
 
     printf("Commandes administrateur (sudo) :\n");
     printf("  sudo passwd.............................Affiche le mot de passe (admin)\n");
@@ -2082,30 +2400,50 @@ void shell(Filesystem *fs, char *current_own) {
             if (verify_sudo_password(fs, current_own)) {
                 show_password(fs);
                 sudo = 0; // Réinitialiser le mode sudo
-            } else {
-                continue;
-            }
+            } 
         } else if (strncmp(command, "sudo chgpasswd", 14) == 0) {
             if (verify_sudo_password(fs, current_own)) {
                 change_password(fs);
                 sudo = 0; // Réinitialiser le mode sudo
-            } else {
-                continue;
             }
         } else if (strncmp(command, "sudo deluser", 12) == 0) {
             if (verify_sudo_password(fs, current_own)) {
                 delete_user_account(fs, command + 13);
                 sudo = 0; // Réinitialiser le mode sudo
                 break;
-            } else {
-                continue;
             }
         } else if (strncmp(command, "sudo resetuser", 14) == 0) {
             if (verify_sudo_password(fs, current_own)) {
                 reset_user_workspace(fs, command + 15);
                 sudo = 0; // Réinitialiser le mode sudo
-            } else {
-                continue;
+            } 
+        } else if (strncmp(command, "sudo delgroup", 13) == 0) {
+            if (verify_sudo_password(fs, current_own)) {
+                delete_group(fs, command + 14);
+                sudo = 0; // Réinitialiser le mode sudo
+            }
+        }
+        else if (strncmp(command, "sudo add", 8) == 0) {
+            if (verify_sudo_password(fs, current_own)) {
+                char username[MAX_FILENAME];
+                char groupname[MAX_FILENAME];
+                if (sscanf(command + 9, "%s %s", username, groupname) == 2) {
+                    add_user_to_group(fs, username, groupname);
+                } else {
+                    printf("Usage: sudo add <username> <groupname>\n");
+                }
+                sudo = 0;
+            }
+        } else if (strncmp(command, "sudo remove", 11) == 0) {
+            if (verify_sudo_password(fs, current_own)) {
+                char username[MAX_FILENAME];
+                char groupname[MAX_FILENAME];
+                if (sscanf(command + 12, "%s %s", username, groupname) == 2) {
+                    remove_user_from_group(fs, username, groupname);
+                } else {
+                    printf("Usage: sudo remove <username> <groupname>\n");
+                }
+                sudo = 0;
             }
         } else if (strncmp(command, "exit", 4) == 0) {
             printf("Arrêt du système de fichiers.\n");
@@ -2113,7 +2451,7 @@ void shell(Filesystem *fs, char *current_own) {
             break;
         } else if (strncmp(command, "help", 4) == 0) {
             help();
-        } else if (strncmp(command, "passwd", 6) == 0 || strncmp(command, "chgpasswd", 9) == 0 || strncmp(command, "deluser", 7) == 0  || strncmp(command, "resetuser", 9) == 0) {
+        } else if (strncmp(command, "delgroup", 8) == 0 || strncmp(command, "passwd", 6) == 0 || strncmp(command, "chgpasswd", 9) == 0 || strncmp(command, "deluser", 7) == 0  || strncmp(command, "resetuser", 9) == 0) {
             printf("Erreur : Cette commande fonctionne uniquement avec sudo\n");
         } else if (strncmp(command, "pwd", 3) == 0) {
             printf("%s\n", fs->current_directory);
@@ -2167,6 +2505,19 @@ void shell(Filesystem *fs, char *current_own) {
             change_directory(fs, command + 3);
         } else if (strncmp(command, "lsgroups", 8) == 0) {
             list_user_groups(fs);
+        } else if (strncmp(command, "lsmembers", 9) == 0) {
+            if (strlen(command) > 10) {
+                list_group_members(fs, command + 10);
+            } else {
+                printf("Usage: lsmembers <groupname>\n");
+                printf("Alternative: lsmembers (affiche le groupe courant)\n");
+                
+                // Afficher les membres du groupe courant si aucun groupe spécifié
+                if (strlen(current_group) > 0) {
+                    printf("\nMembres du groupe courant '%s':\n", current_group);
+                    list_group_members(fs, current_group);
+                }
+            }
         } else if (strncmp(command, "lsl", 3) == 0) {
             list_all_directory(fs);
         } else if (strncmp(command, "ls", 2) == 0) {
@@ -2232,10 +2583,8 @@ void shell(Filesystem *fs, char *current_own) {
             move_file(fs, filename, nomrepertoire);
         } else if (strncmp(command, "free", 4) == 0) {
             print_free_blocks();
-        } else if (strncmp(command, "del", 3) == 0) {
-            user_delete_group(fs, command + 4);
-        } else if (strncmp(command, "add", 3) == 0) {
-            user_add_group(fs, command + 4);
+        } else if (strncmp(command, "quit", 4) == 0) {
+            user_delete_group(fs, command + 5);
         } else if (strncmp(command, "clear", 5) == 0) {
             clear_screen(); 
         } else if (strncmp(command, "whoami", 6) == 0) {
