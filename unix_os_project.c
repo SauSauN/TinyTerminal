@@ -1012,6 +1012,13 @@ void write_to_file(Filesystem *fs, const char *filename, const char *content) {
 
             // Mettre à jour la date de modification
             fs->inodes[i].modification_time = time(NULL);
+            
+            // Vérification si le répertoire existe déjà
+            for (int i = 0; i < fs->inode_count; i++) {
+                if (strcmp(fs->inodes[i].name, fs->current_directory) == 0) {
+                    fs->inodes[i].size = calculate_directory_size_recursive(fs,fs->inodes[i].name); 
+                }
+            }
 
             // Sauvegarder le système de fichiers
             save_filesystem(fs);
@@ -1614,9 +1621,9 @@ void list_all_directory(Filesystem *fs) {
             strftime(modification_time, sizeof(modification_time), "%Y-%m-%d %H:%M:%S", localtime(&fs->inodes[i].modification_time));
             if (fs->inodes[i].is_directory) {
                 fs->inodes[i].size = calculate_directory_size_recursive(fs,fs->inodes[i].name); 
-                printf("%s %i %s  %s  %d  %s  %s  \n", fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, fs->inodes[i].name);
+                printf("%s %i %s  %s  %d  %s  %s  \n", fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, last_element(fs->inodes[i].name));
             } else {
-                printf("%s %i %s  %s  %d  %s  %s  \n",fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, fs->inodes[i].name);
+                printf("%s %i %s  %s  %d  %s  %s  \n",fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, last_element(fs->inodes[i].name));
             }
             found = 1;
             // Compter les fichiers et répertoires
