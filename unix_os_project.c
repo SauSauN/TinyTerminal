@@ -199,33 +199,141 @@ void user_add_group(Filesystem *fs, const char *groupname) {
     }
 }
 
-// Fonction pour delete un groupe
-void user_delete_group(Filesystem *fs, const char *groupname) {
-    // Validation des entrées
-    if (groupname == NULL || strlen(groupname) == 0) {
-        printf("Erreur : nom de groupe invalide.\n");
+// Fonction pour quitter un groupe avec gestion du propriétaire
+void leave_group(Filesystem *fs, const char *groupname) {
+    // Vérifications de base
+    if (strlen(current_own) == 0) {
+        printf("Erreur : Aucun utilisateur connecté.\n");
         return;
     }
 
-    // Rechercher le groupe de l'utilisateur actuel
-    for (int i = 0; i < NUM_INODES; i++) {
-        if (strcmp(fs->group[i].user, current_own) == 0 && strcmp(fs->group[i].group[0].data, groupname) == 0) {
-            // Supprimer l'entrée du groupe
-            memset(fs->group[i].group[0].data, 0, strlen(fs->group[i].group[0].data));
-            printf("Groupe '%s' de l'utilisateur '%s' supprimé.\n", groupname, current_own);
-            fs->group[i].taille--;
-            save_filesystem(fs);
+    if (groupname == NULL || strlen(groupname) == 0) {
+        printf("Erreur : Nom de groupe invalide.\n");
+        return;
+    }
 
-            // Si l'utilisateur n'a plus de groupes, réinitialiser current_group
-            if (fs->group[i].taille == 0) {
-                memset(current_group, 0, sizeof(current_group));
-            }
-            return;
+    // Vérifier si c'est le groupe principal
+    if (strcmp(groupname, current_own) == 0) {
+        printf("Erreur : Vous ne pouvez pas quitter votre groupe principal '%s'.\n", current_own);
+        return;
+    }
+
+    // Trouver le groupe dans le système de fichiers
+    char group_path[MAX_PATH];
+    snprintf(group_path, sizeof(group_path), "./users/groups/%s", groupname);
+    
+    Inode* group_inode = NULL;
+    int is_owner = 0;
+    
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, group_path) == 0 && fs->inodes[i].is_directory) {
+            group_inode = &fs->inodes[i];
+            is_owner = (strcmp(group_inode->owner, current_own) == 0);
+            break;
         }
     }
 
-    // Si le groupe n'est pas trouvé
-    printf("Erreur : le groupe '%s' n'existe pas pour l'utilisateur '%s'.\n", groupname, current_own);
+    if (group_inode == NULL) {
+        printf("Erreur : Groupe '%s' introuvable.\n", groupname);
+        return;
+    }
+
+    // Trouver l'utilisateur courant dans la table des groupes
+    int user_index = -1;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, current_own) == 0) {
+            user_index = i;
+            break;
+        }
+    }
+
+    if (user_index == -1) {
+        printf("Erreur : Utilisateur introuvable.\n");
+        return;
+    }
+
+    // Vérifier l'appartenance au groupe
+    int group_index = -1;
+    for (int j = 0; j < fs->group[user_index].taille; j++) {
+        if (strcmp(fs->group[user_index].group[j].data, groupname) == 0) {
+            group_index = j;
+            break;
+        }
+    }
+
+    if (group_index == -1) {
+        printf("Vous ne faites pas partie du groupe '%s'.\n", groupname);
+        return;
+    }
+
+    // Cas particulier : propriétaire du groupe
+    if (is_owner) {
+        // Compter les membres restants
+        int member_count = 0;
+        char new_owner[MAX_FILENAME] = "";
+        
+        for (int i = 0; i < NUM_USER; i++) {
+            if (fs->group[i].user[0] != '\0') {
+                for (int j = 0; j < fs->group[i].taille; j++) {
+                    if (strcmp(fs->group[i].group[j].data, groupname) == 0) {
+                        member_count++;
+                        if (strcmp(fs->group[i].user, current_own) != 0 && new_owner[0] == '\0') {
+                            strncpy(new_owner, fs->group[i].user, MAX_FILENAME);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (member_count <= 1) {
+            printf("Vous êtes le dernier membre du groupe '%s'.\n", groupname);
+            printf("Options disponibles :\n");
+            printf("1. Supprimer complètement le groupe (commande: sudo delgroup %s)\n", groupname);
+            printf("2. Annuler et rester dans le groupe\n");
+            return;
+        } else {
+            printf("Vous êtes le propriétaire du groupe '%s'.\n", groupname);
+            printf("Il reste %d autres membres dans ce groupe.\n", member_count - 1);
+            
+            if (new_owner[0] != '\0') {
+                printf("Voulez-vous transférer la propriété à '%s'? (o/n) ", new_owner);
+                
+                char response[2];
+                fgets(response, sizeof(response), stdin);
+                
+                if (response[0] == 'o' || response[0] == 'O') {
+                    // Transfert de propriété
+                    strncpy(group_inode->owner, new_owner, MAX_FILENAME);
+                    printf("Propriété du groupe '%s' transférée à '%s'.\n", groupname, new_owner);
+                    save_filesystem(fs);
+                } else {
+                    printf("Annulation. Vous restez propriétaire du groupe.\n");
+                    return;
+                }
+            }
+        }
+    }
+
+    // Retirer le groupe de la liste de l'utilisateur
+    for (int k = group_index; k < fs->group[user_index].taille - 1; k++) {
+        strcpy(fs->group[user_index].group[k].data, fs->group[user_index].group[k+1].data);
+    }
+    fs->group[user_index].taille--;
+
+    // Mise à jour du groupe actuel si nécessaire
+    if (strcmp(current_group, groupname) == 0) {
+        for (int j = 0; j < fs->group[user_index].taille; j++) {
+            if (strcmp(fs->group[user_index].group[j].data, current_own) != 0) {
+                strcpy(current_group, fs->group[user_index].group[j].data);
+                printf("Groupe actuel changé pour '%s'.\n", current_group);
+                break;
+            }
+        }
+    }
+
+    printf("Vous avez quitté le groupe '%s'.\n", groupname);
+    save_filesystem(fs);
 }
 
 // Fonction pour initialiser le superbloc
@@ -2339,11 +2447,11 @@ void help() {
     printf("  lsl.....................................Liste avec métadonnées détaillées\n");
     printf("  cpdir <src> <dest> [répertoire].........Copie un répertoire\n");
     printf("  mvdir <src> <dest>......................Déplace/renomme un répertoire\n");
-    printf("  statd <nom>.............................Affiche les métadonnées d'un répertoire\n\n");
+    printf("  statd <nom>.............................Affiche les métadonnées d'un répertoire\n");
     printf("  cd <nom>................................Change de répertoire\n");
     printf("      cd ..-------------------------------Remonte d'un niveau\n");
     printf("      cd rep------------------------------Va dans le répertoire 'rep'\n");
-    printf("      cd rep/sousrep/soussousrep----------Chemin relatif\n");
+    printf("      cd rep/sousrep/soussousrep----------Chemin relatif\n\n");
 
     printf("Gestion des fichiers :\n");
     printf("  touch <nom>.............................Crée un fichier vide\n");
@@ -2366,11 +2474,11 @@ void help() {
     printf("  chgroup <nom>...........................Change le groupe actuel\n");
     printf("  curgroup................................Affiche le groupe actuel\n");
     printf("  crtgroup <nom>..........................Crée un nouveau groupe\n");
-    printf("  delgroup <nom>..........................Supprime un groupe\n");
-    printf("  quit <nom>..............................Quitter un groupe\n\n");
+    printf("  leavegroup <nom>........................Quitter un groupe\n");
     printf("  lsmembers <nom>.........................Liste les membres d'un groupe\n");
-    printf("  sudo add <pers> <nom>...................Ajoute un utilisateur au groupe\n");
-    printf("  sudo remove <pers> <nom>................Retire un utilisateur du groupe\n");
+    printf("  sudo delgroup <nom>.....................Supprime un groupe (admin)\n");
+    printf("  sudo add <pers> <nom>...................Ajoute un utilisateur au groupe (admin)\n");
+    printf("  sudo remove <pers> <nom>................Retire un utilisateur du groupe (admin)\n\n");
 
     printf("Commandes administrateur (sudo) :\n");
     printf("  sudo passwd.............................Affiche le mot de passe (admin)\n");
@@ -2583,8 +2691,10 @@ void shell(Filesystem *fs, char *current_own) {
             move_file(fs, filename, nomrepertoire);
         } else if (strncmp(command, "free", 4) == 0) {
             print_free_blocks();
-        } else if (strncmp(command, "quit", 4) == 0) {
-            user_delete_group(fs, command + 5);
+        } else if (strncmp(command, "leavegroup", 10) == 0) {
+            if (strlen(command) > 11) {
+                leave_group(fs, command + 11);
+            } 
         } else if (strncmp(command, "clear", 5) == 0) {
             clear_screen(); 
         } else if (strncmp(command, "whoami", 6) == 0) {
