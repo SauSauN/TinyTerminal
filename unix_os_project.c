@@ -1948,41 +1948,61 @@ void create_hard_link(Filesystem *fs, const char *existing_file, const char *new
 
 // Fonction pour afficher l'aide
 void help() {
-    printf("Commandes disponibles :\n");
-    printf("  help................................Affiche cette aide.\n");
-    printf("  exit................................Quitte le shell.\n");
-    printf("  pwd.................................Affiche le répertoire courant.\n");
-    printf("  mkdir <nom>.........................Crée un répertoire.\n");
-    printf("  rmdir <nom>.........................Supprime un répertoire.\n");
-    printf("  cpdir <src> <dest> [répertoire].....Copie un répertoire vers un répertoire.\n");
-    printf("  mvdir <src> <rep>...................Déplace un répertoire vers un répertoire.\n");
-    printf("  cd <nom>............................Change de répertoire.\n");
-    printf("  ls..................................Liste le contenu du répertoire courant.\n");
-    printf("  touch <nom>.........................Crée un fichier vide.\n");
-    printf("  statf <nom>.........................Affiche les métadonnées d'un fichier.\n");
-    printf("  statd <nom>.........................Affiche les métadonnées d'un répertoire.\n");
-    printf("  chmod <nom> <cible> <perm>..........Modifie les permissions d'un fichier.\n");
-    printf("  write <nom> <contenu>...............Écrit du contenu dans un fichier.\n");
-    printf("  cat <nom>...........................Affiche le contenu d'un fichier.\n");
-    printf("  cp <src> <dest> [répertoire]........Copie un fichier vers un répertoire.\n");
-    printf("  mv <src> <rep>......................Déplace un fichier vers un répertoire.\n");
-    printf("  add <nom>...........................Ajoute un utilisateur au groupe.\n");
-    printf("  del <nom>...........................Supprime un utilisateur du groupe.\n");
-    printf("  clear...............................Efface l'écran.\n");
-    printf("  whoami..............................Affiche l'utilisateur actuel.\n");
-    printf("  mvd <src> <dest>....................Renomme un répertoire.\n");
-    printf("  mvf <src> <dest>....................Renomme un fichier.\n");
-    printf("  free................................Affiche les blocs libres.\n");
-    printf("  lsl.................................Liste le contenu du répertoire courant avec leur métadonnées.\n");
-    printf("  rm <nom>............................Supprime un fichier.\n");
-    printf("  lsgroups............................Affiche les groupes de l'utilisateur.\n");
-    printf("  chgroup <nom>.......................Change le groupe de l'utilisateur.\n");
-    printf("  curgroup............................Affiche le groupe actuel.\n");
-    printf("  crtgroup <nom>......................Crée un groupe.\n");
-    printf("  deluser <nom>.......................Supprime un compte utilisateur.\n");
-    printf("  resetuser <nom>.....................Réinitialise le répertoire de travail d'un utilisateur.\n");
-    printf("  passwd..............................Affiche le mot de passe de l'utilisateur.\n");
-    printf("  chgpasswd...........................Change le mot de passe de l'utilisateur.\n");
+    printf("\n=== Aide du système de fichiers ===\n\n");
+    printf("Commandes de base :\n");
+    printf("  help....................................Affiche cette aide\n");
+    printf("  exit....................................Quitte le shell\n");
+    printf("  clear...................................Efface l'écran\n");
+    printf("  whoami..................................Affiche l'utilisateur actuel\n");
+    printf("  pwd.....................................Affiche le répertoire courant\n\n");
+
+    printf("Gestion des répertoires :\n");
+    printf("  mkdir <nom>.............................Crée un répertoire\n");
+    printf("  rmdir <nom>.............................Supprime un répertoire\n");
+    printf("  ls......................................Liste le contenu du répertoire\n");
+    printf("  lsl.....................................Liste avec métadonnées détaillées\n");
+    printf("  cpdir <src> <dest> [répertoire].........Copie un répertoire\n");
+    printf("  mvdir <src> <dest>......................Déplace/renomme un répertoire\n");
+    printf("  statd <nom>.............................Affiche les métadonnées d'un répertoire\n\n");
+    printf("  cd <nom>................................Change de répertoire\n");
+    printf("      cd ..-------------------------------Remonte d'un niveau\n");
+    printf("      cd rep------------------------------Va dans le répertoire 'rep'\n");
+    printf("      cd rep/sousrep/soussousrep----------Chemin relatif\n");
+
+    printf("Gestion des fichiers :\n");
+    printf("  touch <nom>.............................Crée un fichier vide\n");
+    printf("  statf <nom>.............................Affiche les métadonnées d'un fichier\n");
+    printf("  write <nom> <cont>......................Écrit dans un fichier\n");
+    printf("  cat <nom>...............................Affiche le contenu d'un fichier\n");
+    printf("  cp <src> <dest> [répertoire]............Copie un fichier\n");
+    printf("  mv <src> <dest>.........................Déplace/renomme un fichier\n");
+    printf("  rm <nom>................................Supprime un fichier\n");
+    printf("  lnm <src> <dest>........................rée un lien matériel\n\n");
+
+    printf("Permissions :\n");
+    printf("  chmodf <fichier> <cible> <perm>.........Modifie permissions fichier\n");
+    printf("  chmodd <rep> <cible> <perm>.............Modifie permissions répertoire\n");
+    printf("    (cibles: -Owner, -Group, -Others)\n");
+    printf("    (perm: combinaison de rwx, ex: rw-)\n\n");
+
+    printf("Gestion des groupes :\n");
+    printf("  lsgroups................................Liste les groupes de l'utilisateur\n");
+    printf("  chgroup <nom>...........................Change le groupe actuel\n");
+    printf("  curgroup................................Affiche le groupe actuel\n");
+    printf("  crtgroup <nom>..........................Crée un nouveau groupe\n");
+    printf("  add <nom>...............................Ajoute un utilisateur au groupe\n");
+    printf("  del <nom>...............................Supprime un utilisateur du groupe\n\n");
+
+    printf("Commandes administrateur (sudo) :\n");
+    printf("  sudo passwd.............................Affiche le mot de passe (admin)\n");
+    printf("  sudo chgpasswd..........................Change le mot de passe (admin)\n");
+    printf("  sudo deluser <nom>......................Supprime un compte utilisateur (admin)\n");
+    printf("  sudo resetuser <nom>....................Réinitialise un répertoire utilisateur (admin)\n\n");
+
+    printf("Système :\n");
+    printf("  free....................................Affiche les blocs libres\n\n");
+
+    printf("Note : Les commandes admin nécessitent le mot de passe sudo\n");
 }
 
 // Fonction principale du shell
