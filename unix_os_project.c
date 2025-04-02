@@ -388,12 +388,20 @@ void create_directory(Filesystem *fs, const char *dirname, const char *destname)
     }  
     else { 
         // Vérifie si un répertoire existe déjà 
-        char path_rep[MAX_FILENAME * 2];
-        snprintf(path_rep, sizeof(path_rep), "%s/%s", fs->current_directory, destname);
+        char path_rep[MAX_FILENAME * 3];
+        char dot_path[MAX_FILENAME];
+        if (strcmp(fs->current_directory, "./") == 0) {
+            snprintf(path_rep, sizeof(path_rep), "./%s", destname);
+            snprintf(dot_path, sizeof(dot_path), ".");
+        } 
+        else { 
+            snprintf(path_rep, sizeof(path_rep), "%s/%s", fs->current_directory, destname);
+            snprintf(dot_path, sizeof(dot_path), "%s", fs->current_directory);
+        } 
         for (int i = 0; i < fs->inode_count; i++) {
             if (strcmp(fs->inodes[i].name, path_rep) == 0 && fs->inodes[i].is_directory) {
                 if ((fs->inodes[i].permissions[2] == perm && strcmp(fs->inodes[i].owner, current_own) == 0) || (fs->inodes[i].permissions[8] == perm)) {
-                        snprintf(path, sizeof(path), "%s/%s/%s", fs->current_directory, destname, dirname);
+                        snprintf(path, sizeof(path), "%s/%s/%s",dot_path, destname, dirname);
                 } 
                 else { 
                     printf("Accès refusé : %s est un répertoire privé!\n", path_rep);
@@ -1256,119 +1264,125 @@ char* last_element(const char* full_path) {
     return (dernier !=NULL)? dernier +1 :  (char*)full_path;
 }
 
-// Fonction pour copier un répertoire
-void copy_repertoire(Filesystem *fs, const char *repertoirenamedepart, const char *repertoirenamefinal, const char *nomrepertoire) {
-    char full_path_source[MAX_FILENAME * 2];
-    char full_path_dest[MAX_FILENAME * 2];
-    char dest_directory[MAX_FILENAME * 2];
+// Fonction pour copier un répertoire et son contenu
+void copy_repertoire(Filesystem *fs, const char *source_dir, const char *dest_name, const char *dest_parent) {
+    char full_source_path[MAX_FILENAME * 2];
+    char full_dest_path[MAX_FILENAME * 2];
+    char temp_current_dir[MAX_PATH-1];
 
-    // Construire le chemin complet du répertoire source
-    snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, repertoirenamedepart);
+    // Construire les chemins complets
+    if (source_dir[0] == '/') {
+        snprintf(full_source_path, sizeof(full_source_path), "%s", source_dir);
+    } else {
+        snprintf(full_source_path, sizeof(full_source_path), "%s/%s", fs->current_directory, source_dir);
+    }
+
+    if (dest_parent != NULL) {
+        if (dest_parent[0] == '/') {
+            snprintf(full_dest_path, sizeof(full_dest_path), "%s/%s", dest_parent, dest_name);
+        } else {
+            snprintf(full_dest_path, sizeof(full_dest_path), "%s/%s/%s", fs->current_directory, dest_parent, dest_name);
+        }
+    } else {
+        snprintf(full_dest_path, sizeof(full_dest_path), "%s/%s", fs->current_directory, dest_name);
+    }
 
     // Vérifier si le répertoire source existe
-    Inode *source_inode = NULL;
+    Inode *src_inode = NULL;
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && fs->inodes[i].is_directory) {
-            source_inode = &fs->inodes[i];
+        if (strcmp(fs->inodes[i].name, full_source_path) == 0 && fs->inodes[i].is_directory) {
+            src_inode = &fs->inodes[i];
             break;
         }
     }
 
-    if (!source_inode) {
-        printf("Répertoire source '%s' introuvable ou n'est pas un répertoire.\n", full_path_source);
+    if (!src_inode) {
+        printf("Erreur: répertoire source '%s' introuvable.\n", full_source_path);
         return;
     }
 
-    if (nomrepertoire != NULL) {
-        // Vérifier si le nomrepertoire est un chemin complet ou un répertoire relatif
-        if (strchr(nomrepertoire, '/') != NULL) {
-            // C'est un chemin complet
-            if (!directory_exists(fs, nomrepertoire)) {
-                printf("Le répertoire '%s' n'existe pas.\n", nomrepertoire);
-                return;
-            }
-            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", nomrepertoire, repertoirenamefinal);
-        } else {
-            // C'est un répertoire relatif au répertoire courant
-            snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, nomrepertoire);
-            if (!directory_exists(fs, dest_directory)) {
-                printf("Le répertoire '%s' n'existe pas dans le répertoire courant.\n", nomrepertoire);
-                return;
-            }
-            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s/%s", fs->current_directory, nomrepertoire, repertoirenamefinal);
-        }
-    } else {
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", fs->current_directory, repertoirenamefinal);
-    }
-
-    // Vérifier si le répertoire de destination existe déjà
+    // Vérifier si la destination existe déjà
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_dest) == 0) {
-            printf("Le répertoire de destination '%s' existe déjà.\n", full_path_dest);
+        if (strcmp(fs->inodes[i].name, full_dest_path) == 0) {
+            printf("Erreur: le répertoire de destination '%s' existe déjà.\n", full_dest_path);
             return;
         }
     }
 
-    // Créer un nouvel inode pour le répertoire de destination
-    if (fs->inode_count >= MAX_FILES) {
-        printf("Nombre maximum de fichiers atteint !\n");
-        return;
+    // Sauvegarder le répertoire courant
+    strcpy(temp_current_dir, fs->current_directory);
+
+    // Créer le répertoire de destination
+    if (dest_parent != NULL) {
+        if (dest_parent[0] == '/') {
+            strcpy(fs->current_directory, dest_parent);
+        } else {
+            snprintf(fs->current_directory, sizeof(fs->current_directory), "%s/%s", temp_current_dir, dest_parent);
+        }
     }
+    
+    create_directory(fs, dest_name, NULL);
+    strcpy(fs->current_directory, temp_current_dir); // Restaurer le répertoire courant
 
-    // Copier les métadonnées du répertoire source
-    Inode *dest_inode = &fs->inodes[fs->inode_count];
-    strcpy(dest_inode->name, full_path_dest);
-    dest_inode->is_directory = 1;
-    dest_inode->size = source_inode->size;
-    dest_inode->creation_time = time(NULL);
-    dest_inode->modification_time = time(NULL);
-    strncpy(dest_inode->owner, source_inode->owner, MAX_FILENAME);
-    strncpy(dest_inode->permissions, source_inode->permissions, 10);
-    strncpy(dest_inode->group, source_inode->group, GROUP_SIZE);
-
-    // Incrémenter le nombre d'inodes
-    fs->inode_count++;
-
-    // Parcourir tous les fichiers et sous-répertoires du répertoire source
+    // Copier récursivement le contenu
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strstr(fs->inodes[i].name, full_path_source) == fs->inodes[i].name) {
-            // Construire le chemin relatif
-            char relative_path[MAX_FILENAME * 2];
-            strncpy(relative_path, fs->inodes[i].name + strlen(full_path_source), MAX_FILENAME * 2);
+        // Vérifier si l'élément est dans le répertoire source
+        if (strstr(fs->inodes[i].name, full_source_path) == fs->inodes[i].name && 
+            strlen(fs->inodes[i].name) > strlen(full_source_path)) {
+            
+            // Extraire le chemin relatif
+            const char *relative_path = fs->inodes[i].name + strlen(full_source_path) + 1;
+            char new_path[MAX_FILENAME * 3];
+            snprintf(new_path, sizeof(new_path), "%s/%s", full_dest_path, relative_path);
 
-            // Construire le chemin de destination
-            char new_path[MAX_FILENAME * 4];
-            snprintf(new_path, sizeof(new_path), "%s%s", full_path_dest, relative_path);
-
-            // Copier le fichier ou répertoire
             if (fs->inodes[i].is_directory) {
-                create_directory(fs, extract_path(new_path),NULL);
+                // Créer le sous-répertoire
+                char parent_path[MAX_FILENAME * 2];
+                char *last_slash = strrchr(new_path, '/');
+                if (last_slash) {
+                    strncpy(parent_path, new_path, last_slash - new_path);
+                    parent_path[last_slash - new_path] = '\0';
+                    char *dir_name = last_slash + 1;
+                    strcpy(fs->current_directory, parent_path);
+                    create_directory(fs, dir_name, NULL);
+                }
             } else {
-                // Copier le fichier
-                int taille = BLOCK_SIZE * fs->inodes[i].block_count;
-                char *content = (char *)malloc(taille);
-                if (!content) {
-                    printf("Échec de l'allocation de mémoire pour le contenu du fichier !\n");
-                    return; // Gérer l'échec de l'allocation de mémoire
+                // Copier le fichier avec le contenu - VERSION CORRIGÉE
+                char current_path[MAX_FILENAME * 2];
+                strcpy(current_path, fs->current_directory);
+                
+                // Déterminer le répertoire parent du nouveau fichier
+                char *last_slash = strrchr(new_path, '/');
+                if (last_slash) {
+                    *last_slash = '\0';
+                    strcpy(fs->current_directory, new_path);
+                    *last_slash = '/';
                 }
-
-                // Initialiser le buffer de contenu
-                memset(content, 0, taille);
-
-                // Copier le contenu du fichier
-                for (int j = 0; j < fs->inodes[i].block_count; j++) {
-                    strncat(content, block_data[fs->inodes[i].block_indices[j]], BLOCK_SIZE);
+                
+                // Créer le fichier vide
+                create_file(fs, last_element(new_path), fs->inodes[i].size, fs->inodes[i].owner);
+                
+                // Copier le contenu
+                if (fs->inodes[i].block_count > 0) {
+                    char content[BLOCK_SIZE * BLOCK_SIZE] = {0};
+                    for (int j = 0; j < fs->inodes[i].block_count; j++) {
+                        int block_index = fs->inodes[i].block_indices[j];
+                        strcat(content, block_data[block_index]);
+                    }
+                    write_to_file(fs, last_element(new_path), content);
                 }
-                create_file(fs, extract_path(new_path), fs->inodes[i].size, fs->inodes[i].owner);
-                write_to_file(fs, extract_path(new_path), content);
+                
+                // Restaurer le répertoire courant
+                strcpy(fs->current_directory, current_path);
             }
         }
     }
-    delete_directory(fs, full_path_dest);
 
-    // Sauvegarder le système de fichiers
+    // Restaurer le répertoire courant
+    strcpy(fs->current_directory, temp_current_dir);
+
     save_filesystem(fs);
-    printf("Répertoire '%s' copié vers '%s'.\n", full_path_source, full_path_dest);
+    printf("Répertoire '%s' copié vers '%s' avec son contenu.\n", full_source_path, full_dest_path);
 }
 
 // Fonction pour déplacer un repertoire
