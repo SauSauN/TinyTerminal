@@ -2806,23 +2806,23 @@ void shell(Filesystem *fs, char *current_own) {
         command[strcspn(command, "\n")] = 0; // Supprimer le saut de ligne
 
         if (strncmp(command, "sudo passwd", 11) == 0) {
-            if (verify_sudo_password(fs, current_own) && is_user_admin(fs, current_own)) {
+            if (verify_sudo_password(fs, current_own)) {
                 show_password(fs);
                 sudo = 0; // Réinitialiser le mode sudo
             } 
         } else if (strncmp(command, "sudo chgpasswd", 14) == 0) {
-            if (verify_sudo_password(fs, current_own) && is_user_admin(fs, current_own)) {
+            if (verify_sudo_password(fs, current_own)) {
                 change_password(fs);
                 sudo = 0; // Réinitialiser le mode sudo
             }
         } else if (strncmp(command, "sudo deluser", 12) == 0) {
-            if (verify_sudo_password(fs, current_own) && is_user_admin(fs, current_own)) {
+            if (verify_sudo_password(fs, current_own)) {
                 delete_user_account(fs, command + 13);
                 sudo = 0; // Réinitialiser le mode sudo
                 break;
             }
         } else if (strncmp(command, "sudo resetuser", 14) == 0) {
-            if (verify_sudo_password(fs, current_own) && is_user_admin(fs, current_own)) {
+            if (verify_sudo_password(fs, current_own)) {
                 reset_user_workspace(fs, command + 15);
                 sudo = 0; // Réinitialiser le mode sudo
             } 
