@@ -68,8 +68,9 @@ typedef struct {
     Tab group[GROUP_SIZE];       // Groupe associé a l'utilisateur
     int taille;                  // Taille du groupe
     char password[MAX_PASSWORD]; // Mot de passe de l'utilisateur
-    int root;                    // Indicateur si l'utilisateur est root (1) ou non (0)
+    int is_root;                    // Indicateur si l'utilisateur est root (1) ou non (0)
     int is_admin;                // Indicateur si l'utilisateur est admin (1) ou non (0)
+    char root_pwd[MAX_PASSWORD]; // Mot de passe root
 } User_Group;
 
 // Structure représentant le superbloc (métadonnées du système de fichiers)
@@ -86,7 +87,7 @@ typedef struct {
     Inode inodes[MAX_FILES];          // Table des inodes
     User_Group group[NUM_USER];       // Table des groupe
     int inode_count;                  // Nombre d'inodes utilisés
-    int group_count;                  // Nombre de groupes utilisés
+    int user_count;                  // Nombre de groupes utilisés
     char current_directory[MAX_PATH]; // Répertoire actuel
     CommandHistory history;           // Historique des commandes
 } Filesystem;
@@ -372,7 +373,7 @@ void init_filesystem(Filesystem *fs) {
     if (!file) {
         printf("Fichier système non trouvé, initialisation...\n");
         fs->inode_count = 0;
-        fs->group_count = 0;
+        fs->user_count = 0;
         strcpy(fs->current_directory, "\0");  // Chaîne vide
         create_directory_home(fs, ".",NULL);
         strcpy(fs->current_directory, ".");
@@ -2154,6 +2155,62 @@ int verify_sudo_password(Filesystem* fs, const char* current_own) {
     return 1;
 }
 
+// Fonction pour vérifier si l'utilisateur est un administrateur
+int is_user_admin(Filesystem *fs, const char *username) {
+    // Parcourir la table des utilisateurs
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, username) == 0) {
+            // L'utilisateur a été trouvé, retourne le flag is_admin
+            return fs->group[i].is_admin;
+        }
+    }
+    // Si l'utilisateur n'est pas trouvé, affiche un message d'erreur
+    printf("Erreur : utilisateur '%s' introuvable.\n", username);
+    return 0;
+}
+
+// Fonction pour vérifier si l'utilisateur est un super administrateur
+int is_user_superadmin(Filesystem *fs, const char *username) {
+
+    // Vérifier si l'utilisateur actuel est root et que le mot de passe est correct
+    int root_index = -1;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (fs->group[i].is_root == 1 && strcmp(fs->group[i].user, username) == 0) {
+            root_index = i;
+            break;
+        }
+    }
+
+    if (root_index == -1) {
+        printf("Erreur : L'utilisateur actuel n'est pas root.\n");
+        return 0;
+    }
+    
+    printf("[root] Mot de passe pour %s: ", username);
+    char password[MAX_PASSWORD];
+    fgets(password, MAX_PASSWORD, stdin);
+    password[strcspn(password, "\n")] = '\0';
+
+    
+
+    // Vérifier le mot de passe de root
+    if (strcmp(fs->group[root_index].root_pwd, password) != 0) {
+        printf("Erreur : Mot de passe incorrect.\n");
+        return 0;
+    }
+    
+    // Parcourir la table des utilisateurs
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, username) == 0) {
+            // L'utilisateur a été trouvé, retourne le flag is_root
+            return fs->group[i].is_root;
+        }
+    }
+    // Si l'utilisateur n'est pas trouvé, affiche un message d'erreur
+    printf("Erreur : utilisateur '%s' introuvable.\n", username);
+    return 0;
+}
+
 // Fonction pour ajouter un utilisateur à un groupe existant
 void add_user_to_group(Filesystem *fs, const char *username, const char *groupname) {
     // Vérifications de base
@@ -2381,6 +2438,86 @@ void remove_user_from_group(Filesystem *fs, const char *username, const char *gr
     save_filesystem(fs);
 }
 
+// Fonction pour promouvoir un utilisateur au rôle d'admin
+void promote_to_admin(Filesystem *fs, const char *username) {
+    // Vérifier si l'utilisateur actuel est root et que le mot de passe est correct
+    int root_index = -1;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (fs->group[i].is_root == 1 && strcmp(fs->group[i].user, current_own) == 0) {
+            root_index = i;
+            break;
+        }
+    }
+
+    if (root_index == -1) {
+        printf("Erreur : L'utilisateur actuel n'est pas root.\n");
+        return;
+    }
+
+    // Chercher l'utilisateur spécifié dans le système de fichiers
+    int user_index = -1;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, username) == 0) {
+            user_index = i;
+            break;
+        }
+    }
+
+    if (user_index == -1) {
+        printf("Erreur : L'utilisateur '%s' n'existe pas.\n", username);
+        return;
+    }
+
+    // Promouvoir l'utilisateur en admin
+    if (fs->group[user_index].is_admin == 1) {
+        printf("L'utilisateur '%s' est déjà un administrateur.\n", username);
+    } else {
+        fs->group[user_index].is_admin = 1;
+        printf("L'utilisateur '%s' a été promu au rôle d'administrateur.\n", username);
+        save_filesystem(fs);
+    }
+}
+
+// Fonction pour retirer le rôle d'admin d'un utilisateur
+void demote_from_admin(Filesystem *fs, const char *username) {
+    // Vérifier si l'utilisateur actuel est root
+    int root_index = -1;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (fs->group[i].is_root == 1 && strcmp(fs->group[i].user, current_own) == 0) {
+            root_index = i;
+            break;
+        }
+    }
+
+    if (root_index == -1) {
+        printf("Erreur : L'utilisateur actuel n'est pas root.\n");
+        return;
+    }
+
+    // Chercher l'utilisateur spécifié dans le système de fichiers
+    int user_index = -1;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, username) == 0) {
+            user_index = i;
+            break;
+        }
+    }
+
+    if (user_index == -1) {
+        printf("Erreur : L'utilisateur '%s' n'existe pas.\n", username);
+        return;
+    }
+
+    // Vérifier si l'utilisateur est bien administrateur
+    if (fs->group[user_index].is_admin == 0) {
+        printf("L'utilisateur '%s' n'est pas un administrateur.\n", username);
+    } else {
+        // Retirer le rôle d'administrateur
+        fs->group[user_index].is_admin = 0;
+        printf("L'utilisateur '%s' a été retiré de la fonction d'administrateur.\n", username);
+        save_filesystem(fs);
+    }
+}
 
 //=============================================================================
 //=============================================================================
@@ -2647,6 +2784,8 @@ void help() {
     printf("  sudo chgpasswd..........................Change le mot de passe (admin)\n");
     printf("  sudo deluser <nom>......................Supprime un compte utilisateur (admin)\n");
     printf("  sudo resetuser <nom>....................Réinitialise un répertoire utilisateur (admin)\n\n");
+    printf("  sudo addadmin <nom>.....................Ajoute un utilisateur en admin (superadmin)\n");
+    printf("  sudo deladmin <nom>.....................Retire un utilisateur en admin (superadmin)\n\n");
 
     printf("Système :\n");
     printf("  free....................................Affiche les blocs libres\n\n");
@@ -2667,34 +2806,34 @@ void shell(Filesystem *fs, char *current_own) {
         command[strcspn(command, "\n")] = 0; // Supprimer le saut de ligne
 
         if (strncmp(command, "sudo passwd", 11) == 0) {
-            if (verify_sudo_password(fs, current_own)) {
+            if (verify_sudo_password(fs, current_own) && is_user_admin(fs, current_own)) {
                 show_password(fs);
                 sudo = 0; // Réinitialiser le mode sudo
             } 
         } else if (strncmp(command, "sudo chgpasswd", 14) == 0) {
-            if (verify_sudo_password(fs, current_own)) {
+            if (verify_sudo_password(fs, current_own) && is_user_admin(fs, current_own)) {
                 change_password(fs);
                 sudo = 0; // Réinitialiser le mode sudo
             }
         } else if (strncmp(command, "sudo deluser", 12) == 0) {
-            if (verify_sudo_password(fs, current_own)) {
+            if (verify_sudo_password(fs, current_own) && is_user_admin(fs, current_own)) {
                 delete_user_account(fs, command + 13);
                 sudo = 0; // Réinitialiser le mode sudo
                 break;
             }
         } else if (strncmp(command, "sudo resetuser", 14) == 0) {
-            if (verify_sudo_password(fs, current_own)) {
+            if (verify_sudo_password(fs, current_own) && is_user_admin(fs, current_own)) {
                 reset_user_workspace(fs, command + 15);
                 sudo = 0; // Réinitialiser le mode sudo
             } 
         } else if (strncmp(command, "sudo delgroup", 13) == 0) {
-            if (verify_sudo_password(fs, current_own)) {
+            if (verify_sudo_password(fs, current_own) && is_user_admin(fs, current_own)) {
                 delete_group(fs, command + 14);
                 sudo = 0; // Réinitialiser le mode sudo
             }
         }
         else if (strncmp(command, "sudo add", 8) == 0) {
-            if (verify_sudo_password(fs, current_own)) {
+            if (verify_sudo_password(fs, current_own) && is_user_admin(fs, current_own)) {
                 char username[MAX_FILENAME];
                 char groupname[MAX_FILENAME];
                 if (sscanf(command + 9, "%s %s", username, groupname) == 2) {
@@ -2704,8 +2843,28 @@ void shell(Filesystem *fs, char *current_own) {
                 }
                 sudo = 0;
             }
+        } else if (strncmp(command, "sudo addadmin", 13) == 0) {
+            if (verify_sudo_password(fs, current_own) && is_user_superadmin(fs, current_own)) {
+                char username[MAX_FILENAME];
+                if (sscanf(command + 14, "%s", username) == 1) {
+                    promote_to_admin(fs, username);
+                } else {
+                    printf("Usage: sudo addadmin <username>\n");
+                }
+                sudo = 0;
+            }
+        } else if (strncmp(command, "sudo deladmin", 13) == 0) {
+            if (verify_sudo_password(fs, current_own) && is_user_superadmin(fs, current_own)) {
+                char username[MAX_FILENAME];
+                if (sscanf(command + 14, "%s", username) == 1) {
+                    demote_from_admin(fs, username);
+                } else {
+                    printf("Usage: sudo deladmin <username>\n");
+                }
+                sudo = 0;
+            }
         } else if (strncmp(command, "sudo remove", 11) == 0) {
-            if (verify_sudo_password(fs, current_own)) {
+            if (verify_sudo_password(fs, current_own) && is_user_admin(fs, current_own)) {
                 char username[MAX_FILENAME];
                 char groupname[MAX_FILENAME];
                 if (sscanf(command + 12, "%s %s", username, groupname) == 2) {
@@ -2943,7 +3102,7 @@ void init_main(Filesystem *fs) {
 
                 // Demander un mot de passe simple (visible à l'écran)
                 char password[MAX_PASSWORD];
-                printf("Entrez votre mot de passe : ");
+                printf("Entrez votre mot de passe pour votre compte : ");
                 fgets(password, MAX_PASSWORD, stdin);
                 password[strcspn(password, "\n")] = '\0'; // Supprimer le saut de ligne
                 
@@ -2958,6 +3117,27 @@ void init_main(Filesystem *fs) {
                 strncpy(fs->group[i].password, password, MAX_PASSWORD);
                 fs->group[i].password[MAX_PASSWORD - 1] = '\0';
                 fs->group[i].taille = 0; // Initialiser le nombre de groupes à 0
+                if (fs->user_count == 0) {
+                    fs->group[i].is_admin = 1; // Initialiser le statut admin à 0
+                    fs->group[i].is_root = 1; // Initialiser le statut super utilisateur à 1
+                                    
+                    char root_pwd[MAX_PASSWORD];
+                    printf("Entrez votre mot de passe de super admin : ");
+                    fgets(root_pwd, MAX_PASSWORD, stdin);
+                    root_pwd[strcspn(root_pwd, "\n")] = '\0'; // Supprimer le saut de ligne
+                    
+                    // Vérification minimale
+                    if (strlen(root_pwd) == 0) {
+                        printf("Erreur : le mot de passe ne peut pas être vide.\n");
+                        exit(1);
+                    }
+                    strncpy(fs->group[i].root_pwd, root_pwd, MAX_PASSWORD);
+                    fs->group[i].root_pwd[MAX_PASSWORD - 1] = '\0';
+                } else {
+                    fs->group[i].is_admin = 0; // Initialiser le statut admin à 0
+                    fs->group[i].is_root = 0; // Initialiser le statut super utilisateur à 0
+                }
+                fs->user_count++; // Incrémenter le nombre de groupes
                 user_add_group(fs, current_own); // Ajouter l'utilisateur au groupe par défaut
                 found_free_slot = 1;
                 strncpy(fs->current_directory, "./users/home", MAX_FILENAME);
