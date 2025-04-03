@@ -791,7 +791,7 @@ void chmod_file(Filesystem *fs, const char *filename, const char *target, const 
                         strncpy(fs->inodes[i].permissions + 4, new_permissions, 3);  // Mettre à jour les permissions du groupe
                         printf("Permissions de '%s' pour le groupe mises à jour en '%s'.\n", filename, new_permissions);
                     } else {
-                        printf("Les permissions du groupe doivent être exactement 3 caractères (rwx).\n");
+                        printf("Les permissions du groupe doivent être d'exactement 3 caractères (rwx).\n");
                     }
                 } else if (strcmp(target, "-Others") == 0) {
                     if (strlen(new_permissions) == 3) {
