@@ -47,7 +47,9 @@ typedef struct {
 typedef struct {
     char name[MAX_FILENAME];          // Nom du fichier ou du répertoire
     int is_directory;                 // Indicateur si c'est un répertoire (1) ou un fichier (0)
-    int is_group;                     // Indicateur si c'est un groupe     
+    int is_link;                      // Indicateur si c'est un lien (1) ou non (0)
+    int is_group;                     // Indicateur si c'est un groupe 
+    int is_file;                      // Indicateur si c'est un fichier (1) ou non (0)    
     int size;                         // Taille du fichier en octets
     char group[GROUP_SIZE];           // Groupe associé fichier ou du répertoire
     time_t creation_time;             // Date de création
@@ -66,6 +68,8 @@ typedef struct {
     Tab group[GROUP_SIZE];       // Groupe associé a l'utilisateur
     int taille;                  // Taille du groupe
     char password[MAX_PASSWORD]; // Mot de passe de l'utilisateur
+    int root;                    // Indicateur si l'utilisateur est root (1) ou non (0)
+    int is_admin;                // Indicateur si l'utilisateur est admin (1) ou non (0)
 } User_Group;
 
 // Structure représentant le superbloc (métadonnées du système de fichiers)
@@ -400,6 +404,55 @@ void print_free_blocks() {
     printf("Blocs libres disponibles : %d/%d\n", free_blocks, NUM_BLOCKS);
 }
 
+// Fonction pour lister tous les liens symboliques pointant vers un fichier
+void list_symbolic_links(Filesystem *fs, const char *target_path) {
+    printf("Liens symboliques pointant vers '%s':\n", target_path);
+    int found = 0;
+
+    for (int i = 0; i < fs->inode_count; i++) {
+        for (int j = 0; j < NUM_LIEN_MAX; j++) {
+            if (strlen(fs->inodes[i].lien.symbolicLink[j].data) > 0 &&
+                strcmp(fs->inodes[i].lien.symbolicLink[j].data, target_path) == 0) {
+                printf("- %s\n", fs->inodes[i].name);
+                found = 1;
+            }
+        }
+    }
+
+    if (!found) {
+        printf("Aucun lien symbolique trouvé.\n");
+    }
+}
+
+// Fonction pour lister tous les hardlinks d'un fichier
+void list_hard_links(Filesystem *fs, const char *target_path) {
+    // Trouver l'inode original
+    Inode *target_inode = NULL;
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, target_path) == 0 && !fs->inodes[i].is_directory && fs->inodes[i].is_link) {
+            target_inode = &fs->inodes[i];
+            break;
+        }
+    }
+
+    if (target_inode == NULL) {
+        printf("Fichier cible '%s' introuvable.\n", target_path);
+        return;
+    }
+
+    printf("Hardlinks du fichier '%s':\n", target_path);
+    printf("- %s (original)\n", target_path); // Le fichier original
+
+    // Parcourir tous les inodes pour trouver les hardlinks
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (fs->inodes[i].block_count > 0 && 
+            fs->inodes[i].block_indices[0] == target_inode->block_indices[0] &&
+            strcmp(fs->inodes[i].name, target_path) != 0) {
+            printf("- %s\n", fs->inodes[i].name);
+        }
+    }
+}
+
 // Fonction pour créer un répertoire
 void create_directory_home(Filesystem *fs, const char *dirname, const char *destname) {
     if (fs->inode_count >= MAX_FILES) {
@@ -427,6 +480,9 @@ void create_directory_home(Filesystem *fs, const char *dirname, const char *dest
 
     strcpy(fs->inodes[fs->inode_count].name, path);
     fs->inodes[fs->inode_count].is_directory = 1;
+    fs->inodes[fs->inode_count].is_group = 0;
+    fs->inodes[fs->inode_count].is_file = 0;
+    fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].size = 0;
 
     // Initialisation des métadonnées
@@ -434,7 +490,6 @@ void create_directory_home(Filesystem *fs, const char *dirname, const char *dest
     fs->inodes[fs->inode_count].creation_time = now;
     fs->inodes[fs->inode_count].modification_time = now;
     fs->inodes[fs->inode_count].num_liens = 0;
-    fs->inodes[fs->inode_count].is_group = 0;
 
     strncpy(fs->inodes[fs->inode_count].owner, current_own, strlen(current_own));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
@@ -532,6 +587,9 @@ void create_directory(Filesystem *fs, const char *dirname, const char *destname)
 
     strcpy(fs->inodes[fs->inode_count].name, path);
     fs->inodes[fs->inode_count].is_directory = 1;
+    fs->inodes[fs->inode_count].is_group = 0;
+    fs->inodes[fs->inode_count].is_file = 0;
+    fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].size = 0;
 
     // Initialisation des métadonnées
@@ -539,8 +597,6 @@ void create_directory(Filesystem *fs, const char *dirname, const char *destname)
     fs->inodes[fs->inode_count].creation_time = now;
     fs->inodes[fs->inode_count].modification_time = now;
     fs->inodes[fs->inode_count].num_liens = 0;
-    fs->inodes[fs->inode_count].is_group = 0;
-
     strncpy(fs->inodes[fs->inode_count].owner, current_own, strlen(current_own));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
     strncpy(fs->inodes[fs->inode_count].group, current_group, strlen(current_group));
@@ -585,6 +641,9 @@ void create_directory_group(Filesystem *fs, const char *dirname) {
 
     strcpy(fs->inodes[fs->inode_count].name, path);
     fs->inodes[fs->inode_count].is_directory = 1;
+    fs->inodes[fs->inode_count].is_group = 1;
+    fs->inodes[fs->inode_count].is_file = 0;
+    fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].size = 0;
 
     // Initialisation des métadonnées
@@ -592,7 +651,6 @@ void create_directory_group(Filesystem *fs, const char *dirname) {
     fs->inodes[fs->inode_count].creation_time = now;
     fs->inodes[fs->inode_count].modification_time = now;
     fs->inodes[fs->inode_count].num_liens = 0;
-    fs->inodes[fs->inode_count].is_group = 1;
 
     strncpy(fs->inodes[fs->inode_count].owner, current_own, strlen(current_own));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
@@ -867,6 +925,9 @@ void create_file(Filesystem *fs, const char *filename, size_t size, const char *
     strcpy(fs->inodes[fs->inode_count].name, full_path);
     fs->inodes[fs->inode_count].size = size;
     fs->inodes[fs->inode_count].is_directory = 0; // Ce n'est pas un répertoire
+    fs->inodes[fs->inode_count].is_group = 0;
+    fs->inodes[fs->inode_count].is_file = 1;
+    fs->inodes[fs->inode_count].is_link = 0;
 
     // Initialisation des métadonnées
     time_t now = time(NULL); // Récupère l'heure actuelle
@@ -1138,14 +1199,11 @@ int calculate_directory_size_recursive(Filesystem *fs, const char *dirpath) {
         // Vérifier si le fichier/répertoire est dans ce répertoire ou ses sous-répertoires
         if (strncmp(fs->inodes[i].name, dirpath, dirpath_len) == 0) {
             // Pour les fichiers directs dans ce répertoire
-            if (!fs->inodes[i].is_directory && 
-                strcmp(fs->inodes[i].name, dirpath) != 0 && 
-                strchr(fs->inodes[i].name + dirpath_len + 1, '/') == NULL) {
+            if (!fs->inodes[i].is_directory && strcmp(fs->inodes[i].name, dirpath) != 0 && strchr(fs->inodes[i].name + dirpath_len + 1, '/') == NULL) {
                 total_size += fs->inodes[i].size;
             }
             // Pour les sous-répertoires (appel récursif)
-            else if (fs->inodes[i].is_directory && 
-                    strcmp(fs->inodes[i].name, dirpath) != 0) {
+            else if (fs->inodes[i].is_directory &&  strcmp(fs->inodes[i].name, dirpath) != 0) {
                 // Vérifier que c'est un sous-répertoire direct
                 char *subdir = fs->inodes[i].name + dirpath_len;
                 if (*subdir == '/' && strchr(subdir + 1, '/') == NULL) {
@@ -1165,7 +1223,7 @@ void write_to_file(Filesystem *fs, const char *filename, const char *content) {
 
     // Rechercher le fichier dans les inodes
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path) == 0 && fs->inodes[i].is_file) {
             // Vérifier si l'utilisateur a les permissions d'écriture
             if (strcmp(fs->inodes[i].owner, current_own) == 0 && fs->inodes[i].permissions[2] != perm) {
                 printf("Permission refusée : L'utilisateur %s n'a pas les droits nécessaires.\n", current_own);
@@ -1237,7 +1295,7 @@ void read_file(Filesystem *fs, const char *filename) {
 
     // Rechercher le fichier dans les inodes
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path) == 0 && fs->inodes[i].is_file) {
             // Vérifier si l'utilisateur a les permissions de lecture
             if (strcmp(fs->inodes[i].owner, current_own) == 0 && fs->inodes[i].permissions[1] != perm) {
                 printf("Permission refusée : L'utilisateur %s n'a pas les droits de lecture.\n", current_own);
@@ -1285,7 +1343,7 @@ void delete_file(Filesystem *fs, const char *filename) {
 
     // Rechercher le fichier dans les inodes
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path) == 0 && fs->inodes[i].is_file) {
             // Libérer les blocs de données associés au fichier
             for (int j = 0; j < fs->inodes[i].block_count; j++) {
                 int block_index = fs->inodes[i].block_indices[j];
@@ -1356,7 +1414,7 @@ void copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamef
     // Rechercher le fichier source dans les inodes
     Inode *source_inode = NULL;
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && fs->inodes[i].is_file) {
             source_inode = &fs->inodes[i];
             break;
         }
@@ -1723,7 +1781,7 @@ void rename_file(Filesystem *fs, const char *filenamedepart, const char *filenam
     Inode *source_inode = NULL;
     int index_inode = -1;
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && fs->inodes[i].is_file) {
             source_inode = &fs->inodes[i];
             index_inode = i;
             break;
@@ -1737,7 +1795,7 @@ void rename_file(Filesystem *fs, const char *filenamedepart, const char *filenam
 
     // Vérifier si le fichier de destination existe déjà
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_dest) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path_dest) == 0 && fs->inodes[i].is_file) {
             printf("Le fichier de destination '%s' existe déjà.\n", filenamefinal);
             return;
         }
@@ -1825,7 +1883,7 @@ void list_all_directory(Filesystem *fs) {
             }
             found = 1;
             // Compter les fichiers et répertoires
-            if (!fs->inodes[i].is_directory) {
+            if (fs->inodes[i].is_file) {
                 file_count++;
             } else {
                 dir_count++;
@@ -2207,7 +2265,11 @@ void list_group_members(Filesystem *fs, const char *groupname) {
     
     int group_exists = 0;
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, group_path) == 0 && fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, group_path) != 0 && strcmp(current_own, groupname) == 0) {
+            group_exists = 1;
+            break;
+        }
+        else if (strcmp(fs->inodes[i].name, group_path) == 0 && fs->inodes[i].is_directory) {
             group_exists = 1;
             break;
         }
@@ -2260,9 +2322,7 @@ void remove_user_from_group(Filesystem *fs, const char *username, const char *gr
 
     // Vérifier si l'utilisateur est propriétaire du groupe
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, group_path) == 0 && 
-            fs->inodes[i].is_directory && 
-            strcmp(fs->inodes[i].owner, current_own) == 0) {
+        if (strcmp(fs->inodes[i].name, group_path) == 0 &&   fs->inodes[i].is_directory &&  strcmp(fs->inodes[i].owner, current_own) == 0) {
             is_owner_or_sudo = 1;
             break;
         }
@@ -2336,6 +2396,108 @@ void remove_user_from_group(Filesystem *fs, const char *username, const char *gr
 
     printf("Utilisateur '%s' retiré du groupe '%s'.\n", username, groupname);
     save_filesystem(fs);
+}
+
+// Vérifie si un lien symbolique pointe vers un fichier spécifique
+int is_symbolic_link_for(Filesystem *fs, const char *link_path, const char *target_path) {
+    // Trouver l'inode du lien
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, link_path) == 0) {
+            // Vérifier tous les liens symboliques de cet inode
+            for (int j = 0; j < NUM_LIEN_MAX; j++) {
+                if (strcmp(fs->inodes[i].lien.symbolicLink[j].data, target_path) == 0) {
+                    return 1; // True : le lien pointe bien vers la cible
+                }
+            }
+            return 0; // Le fichier existe mais n'est pas un lien vers la cible
+        }
+    }
+    return -1; // Le lien n'existe pas
+}
+
+// Vérifie si un fichier est un hardlink d'un autre fichier
+int is_hard_link_for(Filesystem *fs, const char *link_path, const char *target_path) {
+    // Trouver les inodes des deux fichiers
+    Inode *target_inode = NULL;
+    Inode *link_inode = NULL;
+    
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, target_path) == 0) {
+            target_inode = &fs->inodes[i];
+        }
+        if (strcmp(fs->inodes[i].name, link_path) == 0) {
+            link_inode = &fs->inodes[i];
+        }
+    }
+    
+    // Vérifications de base
+    if (target_inode == NULL) return -2; // Cible inexistante
+    if (link_inode == NULL) return -1;   // Lien inexistant
+    if (target_inode->is_directory || link_inode->is_directory) return -3; // Les répertoires ne peuvent avoir de hardlinks
+    
+    // Comparer les blocs de données (vérification fondamentale)
+    if (target_inode->block_count > 0 && link_inode->block_count > 0 && target_inode->block_indices[0] == link_inode->block_indices[0]) {
+        return 1; // True : ce sont bien des hardlinks du même fichier
+    }
+    
+    return 0; // False : pas des hardlinks du même fichier
+}
+
+// Fonction pour trouver le fichier de base d'un lien symbolique
+char* get_symbolic_link_target(Filesystem *fs, const char *link_path) {
+    static char target_path[MAX_PATH]; // Static pour retourner le résultat
+    
+    // Parcourir tous les inodes
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, link_path) == 0) {
+            // Vérifier s'il s'agit bien d'un lien symbolique
+            for (int j = 0; j < NUM_LIEN_MAX; j++) {
+                if (strlen(fs->inodes[i].lien.symbolicLink[j].data) > 0) {
+                    strncpy(target_path, fs->inodes[i].lien.symbolicLink[j].data, MAX_PATH);
+                    return target_path;
+                }
+            }
+            return NULL; // Fichier trouvé mais pas un lien symbolique
+        }
+    }
+    return NULL; // Lien non trouvé
+}
+
+// Fonction pour trouver le fichier original d'un hardlink
+char* get_hardlink_original(Filesystem *fs, const char *link_path) {
+    static char original_path[MAX_PATH];
+    int original_inode = -1;
+    
+    // Trouver l'inode du lien
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, link_path) == 0 && fs->inodes[i].is_link) {
+            if (fs->inodes[i].block_count > 0) {
+                original_inode = fs->inodes[i].block_indices[0];
+                break;
+            }
+        }
+    }
+    
+    if (original_inode == -1) return NULL; // Pas un hardlink valide
+    
+    // Trouver le premier fichier avec ce même inode (le plus ancien)
+    time_t oldest_time = 0;
+    int found = 0;
+    
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (fs->inodes[i].block_count > 0 && 
+            fs->inodes[i].block_indices[0] == original_inode) {
+            
+            // Prendre le fichier le plus ancien comme original
+            if (!found || fs->inodes[i].creation_time < oldest_time) {
+                strncpy(original_path, fs->inodes[i].name, MAX_PATH);
+                oldest_time = fs->inodes[i].creation_time;
+                found = 1;
+            }
+        }
+    }
+    
+    return found ? original_path : NULL;
 }
 
 // Fonction pour créer un lien matériel
@@ -2552,6 +2714,23 @@ void shell(Filesystem *fs, char *current_own) {
                     printf("Usage: sudo remove <username> <groupname>\n");
                 }
                 sudo = 0;
+            }
+        } else if (strncmp(command, "lssymlinks", 10) == 0) {
+            if (strlen(command) > 11) {
+                char full_path[MAX_PATH+1];
+                snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, command + 11);
+                list_symbolic_links(fs, full_path);
+            } else {
+                printf("Usage: lssymlinks <fichier_cible>\n");
+            }
+        }
+        else if (strncmp(command, "lshardlinks", 11) == 0) {
+            if (strlen(command) > 12) {
+                char full_path[MAX_PATH+1];
+                snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, command + 12);
+                list_hard_links(fs, full_path);
+            } else {
+                printf("Usage: lshardlinks <fichier_cible>\n");
             }
         } else if (strncmp(command, "exit", 4) == 0) {
             printf("Arrêt du système de fichiers.\n");
