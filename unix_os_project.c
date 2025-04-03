@@ -429,7 +429,7 @@ void list_hard_links(Filesystem *fs, const char *target_path) {
     // Trouver l'inode original
     Inode *target_inode = NULL;
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, target_path) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, target_path) == 0 && !fs->inodes[i].is_directory && fs->inodes[i].is_link) {
             target_inode = &fs->inodes[i];
             break;
         }
@@ -1199,14 +1199,11 @@ int calculate_directory_size_recursive(Filesystem *fs, const char *dirpath) {
         // Vérifier si le fichier/répertoire est dans ce répertoire ou ses sous-répertoires
         if (strncmp(fs->inodes[i].name, dirpath, dirpath_len) == 0) {
             // Pour les fichiers directs dans ce répertoire
-            if (!fs->inodes[i].is_directory && 
-                strcmp(fs->inodes[i].name, dirpath) != 0 && 
-                strchr(fs->inodes[i].name + dirpath_len + 1, '/') == NULL) {
+            if (!fs->inodes[i].is_directory && strcmp(fs->inodes[i].name, dirpath) != 0 && strchr(fs->inodes[i].name + dirpath_len + 1, '/') == NULL) {
                 total_size += fs->inodes[i].size;
             }
             // Pour les sous-répertoires (appel récursif)
-            else if (fs->inodes[i].is_directory && 
-                    strcmp(fs->inodes[i].name, dirpath) != 0) {
+            else if (fs->inodes[i].is_directory &&  strcmp(fs->inodes[i].name, dirpath) != 0) {
                 // Vérifier que c'est un sous-répertoire direct
                 char *subdir = fs->inodes[i].name + dirpath_len;
                 if (*subdir == '/' && strchr(subdir + 1, '/') == NULL) {
@@ -1226,7 +1223,7 @@ void write_to_file(Filesystem *fs, const char *filename, const char *content) {
 
     // Rechercher le fichier dans les inodes
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path) == 0 && fs->inodes[i].is_file) {
             // Vérifier si l'utilisateur a les permissions d'écriture
             if (strcmp(fs->inodes[i].owner, current_own) == 0 && fs->inodes[i].permissions[2] != perm) {
                 printf("Permission refusée : L'utilisateur %s n'a pas les droits nécessaires.\n", current_own);
@@ -1298,7 +1295,7 @@ void read_file(Filesystem *fs, const char *filename) {
 
     // Rechercher le fichier dans les inodes
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path) == 0 && fs->inodes[i].is_file) {
             // Vérifier si l'utilisateur a les permissions de lecture
             if (strcmp(fs->inodes[i].owner, current_own) == 0 && fs->inodes[i].permissions[1] != perm) {
                 printf("Permission refusée : L'utilisateur %s n'a pas les droits de lecture.\n", current_own);
@@ -1346,7 +1343,7 @@ void delete_file(Filesystem *fs, const char *filename) {
 
     // Rechercher le fichier dans les inodes
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path) == 0 && fs->inodes[i].is_file) {
             // Libérer les blocs de données associés au fichier
             for (int j = 0; j < fs->inodes[i].block_count; j++) {
                 int block_index = fs->inodes[i].block_indices[j];
@@ -1417,7 +1414,7 @@ void copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamef
     // Rechercher le fichier source dans les inodes
     Inode *source_inode = NULL;
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && fs->inodes[i].is_file) {
             source_inode = &fs->inodes[i];
             break;
         }
@@ -1784,7 +1781,7 @@ void rename_file(Filesystem *fs, const char *filenamedepart, const char *filenam
     Inode *source_inode = NULL;
     int index_inode = -1;
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path_source) == 0 && fs->inodes[i].is_file) {
             source_inode = &fs->inodes[i];
             index_inode = i;
             break;
@@ -1798,7 +1795,7 @@ void rename_file(Filesystem *fs, const char *filenamedepart, const char *filenam
 
     // Vérifier si le fichier de destination existe déjà
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_dest) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_path_dest) == 0 && fs->inodes[i].is_file) {
             printf("Le fichier de destination '%s' existe déjà.\n", filenamefinal);
             return;
         }
@@ -1886,7 +1883,7 @@ void list_all_directory(Filesystem *fs) {
             }
             found = 1;
             // Compter les fichiers et répertoires
-            if (!fs->inodes[i].is_directory) {
+            if (fs->inodes[i].is_file) {
                 file_count++;
             } else {
                 dir_count++;
@@ -2325,9 +2322,7 @@ void remove_user_from_group(Filesystem *fs, const char *username, const char *gr
 
     // Vérifier si l'utilisateur est propriétaire du groupe
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, group_path) == 0 && 
-            fs->inodes[i].is_directory && 
-            strcmp(fs->inodes[i].owner, current_own) == 0) {
+        if (strcmp(fs->inodes[i].name, group_path) == 0 &&   fs->inodes[i].is_directory &&  strcmp(fs->inodes[i].owner, current_own) == 0) {
             is_owner_or_sudo = 1;
             break;
         }
@@ -2475,7 +2470,7 @@ char* get_hardlink_original(Filesystem *fs, const char *link_path) {
     
     // Trouver l'inode du lien
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, link_path) == 0 && !fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, link_path) == 0 && fs->inodes[i].is_link) {
             if (fs->inodes[i].block_count > 0) {
                 original_inode = fs->inodes[i].block_indices[0];
                 break;
