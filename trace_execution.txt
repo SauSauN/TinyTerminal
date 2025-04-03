@@ -1,0 +1,7 @@
+Date: [2025-04-03 22:17:45], Utilisateur: [nelly], Groupe: [nelly], Role: [root], Succes: [o], Commande: [new user]
+Date: [2025-04-03 22:17:50], Utilisateur: [nelly], Groupe: [nelly], Role: [root], Succes: [o], Commande: [help]
+Date: [2025-04-03 22:18:17], Utilisateur: [nelly], Groupe: [nelly], Role: [root], Succes: [o], Commande: [sudo trace]
+Date: [2025-04-03 22:18:42], Utilisateur: [mama], Groupe: [mama], Role: [user], Succes: [o], Commande: [new user]
+Date: [2025-04-03 22:18:48], Utilisateur: [mama], Groupe: [mama], Role: [user], Succes: [o], Commande: [sudo trace]
+Date: [2025-04-03 22:19:05], Utilisateur: [nelly], Groupe: [nelly], Role: [root], Succes: [o], Commande: [old user]
+Date: [2025-04-03 22:19:10], Utilisateur: [nelly], Groupe: [nelly], Role: [root], Succes: [o], Commande: [sudo trace]
