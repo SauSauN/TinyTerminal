@@ -2613,12 +2613,47 @@ void save_trace_execution(Filesystem *fs, const char *current_own, const char *c
     }
 
     // Enregistrer la trace d'exécution dans le fichier de log
-    fprintf(trace_file, "[%s] Utilisateur: %s, Groupe: %s, Role: %s, Succes: %c, Commande: %s\n", time_str, current_own,current_group, role, success, command);
+    fprintf(trace_file, "Date: [%s], Utilisateur: [%s], Groupe: [%s], Role: [%s], Succes: [%c], Commande: [%s]\n", time_str, current_own,current_group, role, success, command);
 
     // Fermer le fichier
     fclose(trace_file);
 }
 
+// Fonction pour lire le fichier de trace et filtrer selon les droits d'accès de l'utilisateur
+int  read_trace_by_user(Filesystem *fs, const char *current_own) {
+    FILE *trace_file = fopen(TRACE_FILE, "r"); // Ouvrir le fichier en mode lecture
+
+    if (trace_file == NULL) {
+        printf("Erreur : Impossible d'ouvrir le fichier de trace d'exécution pour lecture.\n");
+        return 0;
+    }
+
+    char line[256]; // Variable pour stocker chaque ligne du fichier
+
+    // Vérifier si l'utilisateur est un superadmin
+    int is_superadmin = is_user_superadmin(fs, current_own);
+
+    // Lire chaque ligne du fichier
+    while (fgets(line, sizeof(line), trace_file)) {
+        // Si l'utilisateur est un superadmin, afficher toutes les lignes
+        if (is_superadmin) {
+            printf("%s", line);
+        } else {
+            // Si l'utilisateur n'est pas un superadmin, vérifier s'il correspond à la ligne
+            char utilisateur[50];
+            if (sscanf(line, "Date: [%*[^]]], Utilisateur: [%49[^]]]", utilisateur) == 1) {
+                // Si le nom de l'utilisateur dans la ligne correspond à current_own, afficher la ligne
+                if (strcmp(utilisateur, current_own) == 0) {
+                    printf("%s", line);
+                }
+            }
+        }
+    }
+
+    // Fermer le fichier
+    fclose(trace_file);
+    return 1;
+}
 
 //=============================================================================
 //=============================================================================
@@ -2736,7 +2771,6 @@ char* get_hardlink_original(Filesystem *fs, const char *hard_link) {
 
 //=============================================================================
 //=============================================================================
-
 
 // Fonction pour créer un lien matériel
 int create_hard_link(Filesystem *fs, const char *existing_file, const char *new_link) {
@@ -2878,12 +2912,13 @@ void help() {
     printf("  leavegroup <nom>........................Quitter un groupe\n");
     printf("  lsmembers <nom>.........................Liste les membres d'un groupe\n");
     printf("  sudo delgroup <nom>.....................Supprime un groupe (admin)\n");
-    printf("  sudo add <pers> <nom>...................Ajoute un utilisateur au groupe (admin)\n");
+    printf("  sudo add <nom> <pers>...................Ajoute un utilisateur au groupe (admin)\n");
     printf("  sudo remove <pers> <nom>................Retire un utilisateur du groupe (admin)\n\n");
 
     printf("Commandes administrateur (sudo) :\n");
     printf("  sudo passwd.............................Affiche le mot de passe (admin)\n");
     printf("  sudo chgpasswd..........................Change le mot de passe (admin)\n");
+    printf("  sudo trace..............................Affiche la trace d'exécution (admin)\n");
     printf("  sudo deluser <nom>......................Supprime un compte utilisateur (admin)\n");
     printf("  sudo resetuser <nom>....................Réinitialise un répertoire utilisateur (admin)\n\n");
     printf("  sudo addadmin <nom>.....................Ajoute un utilisateur en admin (superadmin)\n");
@@ -2916,6 +2951,18 @@ void shell(Filesystem *fs, char *current_own) {
                 } else {
                     printf("Erreur : Impossible d'afficher le mot de passe.\n");
                     success = 'n'; // Si le mot de passe n'est pas affiché
+                }
+            } else {
+                success = 'n'; // Le mot de passe sudo est incorrect
+            }
+        } else if (strncmp(command, "sudo trace", 10) == 0) {
+            if (verify_sudo_password(fs, current_own)) {
+                if (read_trace_by_user(fs, current_own)) {
+                    sudo = 0; // Réinitialiser le mode sudo
+                    success = 'o'; // Si la création du répertoire réussit
+                } else {
+                    printf("Erreur : Impossible de changer le mot de passe.\n");
+                    success = 'n'; // Si la création du répertoire échoue
                 }
             } else {
                 success = 'n'; // Le mot de passe sudo est incorrect
