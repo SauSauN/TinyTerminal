@@ -47,7 +47,9 @@ typedef struct {
 typedef struct {
     char name[MAX_FILENAME];          // Nom du fichier ou du répertoire
     int is_directory;                 // Indicateur si c'est un répertoire (1) ou un fichier (0)
-    int is_group;                     // Indicateur si c'est un groupe     
+    int is_link;                      // Indicateur si c'est un lien (1) ou non (0)
+    int is_group;                     // Indicateur si c'est un groupe 
+    int is_file;                      // Indicateur si c'est un fichier (1) ou non (0)    
     int size;                         // Taille du fichier en octets
     char group[GROUP_SIZE];           // Groupe associé fichier ou du répertoire
     time_t creation_time;             // Date de création
@@ -66,6 +68,8 @@ typedef struct {
     Tab group[GROUP_SIZE];       // Groupe associé a l'utilisateur
     int taille;                  // Taille du groupe
     char password[MAX_PASSWORD]; // Mot de passe de l'utilisateur
+    int root;                    // Indicateur si l'utilisateur est root (1) ou non (0)
+    int is_admin;                // Indicateur si l'utilisateur est admin (1) ou non (0)
 } User_Group;
 
 // Structure représentant le superbloc (métadonnées du système de fichiers)
@@ -476,6 +480,9 @@ void create_directory_home(Filesystem *fs, const char *dirname, const char *dest
 
     strcpy(fs->inodes[fs->inode_count].name, path);
     fs->inodes[fs->inode_count].is_directory = 1;
+    fs->inodes[fs->inode_count].is_group = 0;
+    fs->inodes[fs->inode_count].is_file = 0;
+    fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].size = 0;
 
     // Initialisation des métadonnées
@@ -483,7 +490,6 @@ void create_directory_home(Filesystem *fs, const char *dirname, const char *dest
     fs->inodes[fs->inode_count].creation_time = now;
     fs->inodes[fs->inode_count].modification_time = now;
     fs->inodes[fs->inode_count].num_liens = 0;
-    fs->inodes[fs->inode_count].is_group = 0;
 
     strncpy(fs->inodes[fs->inode_count].owner, current_own, strlen(current_own));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
@@ -581,6 +587,9 @@ void create_directory(Filesystem *fs, const char *dirname, const char *destname)
 
     strcpy(fs->inodes[fs->inode_count].name, path);
     fs->inodes[fs->inode_count].is_directory = 1;
+    fs->inodes[fs->inode_count].is_group = 0;
+    fs->inodes[fs->inode_count].is_file = 0;
+    fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].size = 0;
 
     // Initialisation des métadonnées
@@ -588,8 +597,6 @@ void create_directory(Filesystem *fs, const char *dirname, const char *destname)
     fs->inodes[fs->inode_count].creation_time = now;
     fs->inodes[fs->inode_count].modification_time = now;
     fs->inodes[fs->inode_count].num_liens = 0;
-    fs->inodes[fs->inode_count].is_group = 0;
-
     strncpy(fs->inodes[fs->inode_count].owner, current_own, strlen(current_own));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
     strncpy(fs->inodes[fs->inode_count].group, current_group, strlen(current_group));
@@ -634,6 +641,9 @@ void create_directory_group(Filesystem *fs, const char *dirname) {
 
     strcpy(fs->inodes[fs->inode_count].name, path);
     fs->inodes[fs->inode_count].is_directory = 1;
+    fs->inodes[fs->inode_count].is_group = 1;
+    fs->inodes[fs->inode_count].is_file = 0;
+    fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].size = 0;
 
     // Initialisation des métadonnées
@@ -641,7 +651,6 @@ void create_directory_group(Filesystem *fs, const char *dirname) {
     fs->inodes[fs->inode_count].creation_time = now;
     fs->inodes[fs->inode_count].modification_time = now;
     fs->inodes[fs->inode_count].num_liens = 0;
-    fs->inodes[fs->inode_count].is_group = 1;
 
     strncpy(fs->inodes[fs->inode_count].owner, current_own, strlen(current_own));
     strncpy(fs->inodes[fs->inode_count].permissions, permissions, 10);
@@ -916,6 +925,9 @@ void create_file(Filesystem *fs, const char *filename, size_t size, const char *
     strcpy(fs->inodes[fs->inode_count].name, full_path);
     fs->inodes[fs->inode_count].size = size;
     fs->inodes[fs->inode_count].is_directory = 0; // Ce n'est pas un répertoire
+    fs->inodes[fs->inode_count].is_group = 0;
+    fs->inodes[fs->inode_count].is_file = 1;
+    fs->inodes[fs->inode_count].is_link = 0;
 
     // Initialisation des métadonnées
     time_t now = time(NULL); // Récupère l'heure actuelle
@@ -2256,7 +2268,11 @@ void list_group_members(Filesystem *fs, const char *groupname) {
     
     int group_exists = 0;
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, group_path) == 0 && fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, group_path) != 0 && strcmp(current_own, groupname) == 0) {
+            group_exists = 1;
+            break;
+        }
+        else if (strcmp(fs->inodes[i].name, group_path) == 0 && fs->inodes[i].is_directory) {
             group_exists = 1;
             break;
         }
@@ -2425,8 +2441,7 @@ int is_hard_link_for(Filesystem *fs, const char *link_path, const char *target_p
     if (target_inode->is_directory || link_inode->is_directory) return -3; // Les répertoires ne peuvent avoir de hardlinks
     
     // Comparer les blocs de données (vérification fondamentale)
-    if (target_inode->block_count > 0 && link_inode->block_count > 0 &&
-        target_inode->block_indices[0] == link_inode->block_indices[0]) {
+    if (target_inode->block_count > 0 && link_inode->block_count > 0 && target_inode->block_indices[0] == link_inode->block_indices[0]) {
         return 1; // True : ce sont bien des hardlinks du même fichier
     }
     
@@ -2707,7 +2722,7 @@ void shell(Filesystem *fs, char *current_own) {
             }
         } else if (strncmp(command, "lssymlinks", 10) == 0) {
             if (strlen(command) > 11) {
-                char full_path[MAX_PATH];
+                char full_path[MAX_PATH+1];
                 snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, command + 11);
                 list_symbolic_links(fs, full_path);
             } else {
@@ -2716,7 +2731,7 @@ void shell(Filesystem *fs, char *current_own) {
         }
         else if (strncmp(command, "lshardlinks", 11) == 0) {
             if (strlen(command) > 12) {
-                char full_path[MAX_PATH];
+                char full_path[MAX_PATH+1];
                 snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, command + 12);
                 list_hard_links(fs, full_path);
             } else {
