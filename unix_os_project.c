@@ -1506,18 +1506,25 @@ int move_file(Filesystem *fs, const char *filename, const char *nomrepertoire) {
     char full_path_source[MAX_FILENAME * 2];
     char full_path_dest[MAX_FILENAME * 2];
     char dest_directory[MAX_FILENAME * 2];
+    char prevent_path[MAX_FILENAME * 2];
+    strncpy(prevent_path, fs->current_directory, MAX_FILENAME);
 
     // Construire le chemin complet du fichier source
     snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, filename);
 
     // Vérifier si le nomrepertoire est un chemin complet ou un répertoire relatif
     if (strchr(nomrepertoire, '/') != NULL) {
+        char exists_path[MAX_FILENAME * 2-2];
+        // C'est un répertoire relatif au répertoire courant
+        snprintf(exists_path, sizeof(exists_path), "%s/%s", fs->current_directory, nomrepertoire);
         // C'est un chemin complet
-        if (!directory_exists(fs, nomrepertoire)) {
+        if (!directory_exists(fs, exists_path)) {
             printf("Le répertoire '%s' n'existe pas.\n", nomrepertoire);
             return 0;
         }
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", nomrepertoire, filename);
+        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", exists_path, filename);
+    } else if (strcmp(nomrepertoire, "..") == 0) {
+        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", retirer_suffixe(fs->current_directory), filename); // Chemin relatif au répertoire parent
     } else {
         // C'est un répertoire relatif au répertoire courant
         snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, nomrepertoire);
@@ -1562,6 +1569,7 @@ int move_file(Filesystem *fs, const char *filename, const char *nomrepertoire) {
     Inode *dest_inode = &fs->inodes[fs->inode_count];
     strcpy(dest_inode->name, full_path_dest);
     dest_inode->is_directory = 0;
+    dest_inode->is_file = 1;
     dest_inode->size = source_inode->size;
     dest_inode->creation_time = source_inode->creation_time;
     dest_inode->modification_time = time(NULL); // Mettre à jour la date de modification
@@ -1586,6 +1594,7 @@ int move_file(Filesystem *fs, const char *filename, const char *nomrepertoire) {
     // Sauvegarder le système de fichiers
     save_filesystem(fs);
     printf("Fichier '%s' déplacé vers '%s'.\n", filename, full_path_dest);
+    strncpy(fs->current_directory, prevent_path, MAX_FILENAME);
     return 1;
 }
 
@@ -1747,6 +1756,8 @@ int move_directory(Filesystem *fs, const char *repertoirename, const char *nomre
     char full_path_source[MAX_FILENAME * 2];
     char full_path_dest[MAX_FILENAME * 2];
     char dest_directory[MAX_FILENAME * 2];
+    char prevent_path[MAX_FILENAME * 2];
+    strncpy(prevent_path, fs->current_directory, MAX_FILENAME);
 
     // Construire le chemin complet du répertoire source
     snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, repertoirename);
@@ -1768,13 +1779,18 @@ int move_directory(Filesystem *fs, const char *repertoirename, const char *nomre
     }
 
     // Vérifier si le nomrepertoire est un chemin complet ou un répertoire relatif
-    if (strchr(nomrepertoire, '/') != NULL) {
+    if (strchr(nomrepertoire, '/') != NULL) {            
+        char exists_path[MAX_FILENAME * 2 - 2];
+        // C'est un répertoire relatif au répertoire courant
+        snprintf(exists_path, sizeof(exists_path), "%s/%s", fs->current_directory, nomrepertoire);
         // C'est un chemin complet
-        if (!directory_exists(fs, nomrepertoire)) {
+        if (!directory_exists(fs, exists_path)) {
             printf("Erreur : le répertoire de destination '%s' n'existe pas.\n", nomrepertoire);
             return 0;
         }
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", nomrepertoire, repertoirename);
+        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", exists_path, repertoirename);
+    } else if (strcmp(nomrepertoire, "..") == 0) {
+        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", retirer_suffixe(fs->current_directory), repertoirename); // Chemin relatif au répertoire parent
     } else {
         // C'est un répertoire relatif au répertoire courant
         snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, nomrepertoire);
@@ -1809,6 +1825,7 @@ int move_directory(Filesystem *fs, const char *repertoirename, const char *nomre
     // Sauvegarder le système de fichiers
     save_filesystem(fs);
     printf("Répertoire '%s' déplacé vers '%s'.\n", full_path_source, full_path_dest);
+    strncpy( fs->current_directory, prevent_path,MAX_FILENAME);
     return 1;
 }
 
@@ -2893,63 +2910,77 @@ int create_hard_link(Filesystem *fs, const char *existing_file, const char *new_
 void help() {
     printf("\n=== Aide du système de fichiers ===\n\n");
     printf("Commandes de base :\n");
-    printf("  help....................................Affiche cette aide\n");
-    printf("  exit....................................Quitte le shell\n");
-    printf("  clear...................................Efface l'écran\n");
-    printf("  whoami..................................Affiche l'utilisateur actuel\n");
-    printf("  pwd.....................................Affiche le répertoire courant\n\n");
+    printf("  help........................................Affiche cette aide\n");
+    printf("  exit........................................Quitte le shell\n");
+    printf("  clear.......................................Efface l'écran\n");
+    printf("  whoami......................................Affiche l'utilisateur actuel\n");
+    printf("  pwd.........................................Affiche le répertoire courant\n\n");
 
     printf("Gestion des répertoires :\n");
-    printf("  mkdir <nom>.............................Crée un répertoire\n");
-    printf("  rmdir <nom>.............................Supprime un répertoire\n");
-    printf("  ls......................................Liste le contenu du répertoire\n");
-    printf("  lsl.....................................Liste avec métadonnées détaillées\n");
-    printf("  cpdir <src> <dest> [répertoire].........Copie un répertoire\n");
-    printf("  mvdir <src> <dest>......................Déplace/renomme un répertoire\n");
-    printf("  statd <nom>.............................Affiche les métadonnées d'un répertoire\n");
-    printf("  cd <nom>................................Change de répertoire\n");
-    printf("      cd ..-------------------------------Remonte d'un niveau\n");
-    printf("      cd rep------------------------------Va dans le répertoire 'rep'\n");
-    printf("      cd rep/sousrep/soussousrep----------Chemin relatif\n\n");
+    printf("  mkdir <nom>.................................Crée un répertoire\n");
+    printf("  rmdir <nom>.................................Supprime un répertoire\n");
+    printf("  ls..........................................Liste le contenu du répertoire\n");
+    printf("  lsl.........................................Liste avec métadonnées détaillées\n");
+    printf("  statd <nom>.................................Affiche les métadonnées d'un répertoire\n");
+    printf("  cd <nom>....................................Change de répertoire\n");
+    printf("    cd .. ------------------------------------Remonte d'un niveau\n");
+    printf("    cd rep------------------------------------Va dans le répertoire 'rep'\n");
+    printf("    cd rep/sousrep/etc------------------------Chemin relatif\n\n");
+    printf("  cpdir <src> <dest> [répertoire].............Copie un répertoire\n");
+    printf("    cpdir <src> <dest>------------------------Copie un répertoire dans le répertoire actuel\n");
+    printf("    cpdir <src> <dest> .. --------------------Copie un répertoire dans le répertoire parent\n");
+    printf("    cpdir <src> <dest> rep--------------------Copie un répertoire dans le répertoire 'rep'\n");
+    printf("    cpdir <src> <dest> rep/sousrep/etc--------Chemin relatif\n\n");
+    printf("  mvdir <src> <répertoire>....................Déplace un répertoire\n");
+    printf("    mvdir <src> .. ---------------------------Déplace un répertoire dans le répertoire parent\n");
+    printf("    mvdir <src> rep---------------------------Déplace un répertoire dans le répertoire 'rep'\n");
+    printf("    mvdir <src> rep/sousrep/etc---------------Chemin relatif\n\n");
 
     printf("Gestion des fichiers :\n");
-    printf("  touch <nom>.............................Crée un fichier vide\n");
-    printf("  statf <nom>.............................Affiche les métadonnées d'un fichier\n");
-    printf("  write <nom> <cont>......................Écrit dans un fichier\n");
-    printf("  cat <nom>...............................Affiche le contenu d'un fichier\n");
-    printf("  cp <src> <dest> [répertoire]............Copie un fichier\n");
-    printf("  mv <src> <dest>.........................Déplace/renomme un fichier\n");
-    printf("  rm <nom>................................Supprime un fichier\n");
-    printf("  lnm <src> <dest>........................rée un lien matériel\n\n");
+    printf("  touch <nom>.................................Crée un fichier vide\n");
+    printf("  statf <nom>.................................Affiche les métadonnées d'un fichier\n");
+    printf("  write <nom> <cont>..........................Écrit dans un fichier\n");
+    printf("  cat <nom>...................................Affiche le contenu d'un fichier\n");
+    printf("  rm <nom>....................................Supprime un fichier\n");
+    printf("  lnm <src> <dest>............................rée un lien matériel\n");
+    printf("  cp <src> <dest> [répertoire]................Copie un fichier\n");
+    printf("    cp <src> <dest>---------------------------Copie un fichier dans un répertoire actuel\n");
+    printf("    cp <src> <dest> .. -----------------------Copie un fichier dans un répertoire parent\n");
+    printf("    cp <src> <dest> rep-----------------------Copie un fichier dans un répertoire 'rep'\n");
+    printf("    cp <src> <dest> rep/sousrep/etc-----------Chemin relatif\n\n");
+    printf("  mv <src> <répertoire>.......................Déplace/renomme un fichier\n");
+    printf("    mv <src> .. ------------------------------Déplace un fichier dans le répertoire parent\n");
+    printf("    mv <src> rep------------------------------Déplace un fichier dans le répertoire 'rep'\n");
+    printf("    mv <src> rep/sousrep/etc------------------Chemin relatif\n\n");
 
     printf("Permissions :\n");
-    printf("  chmodf <fichier> <cible> <perm>.........Modifie permissions fichier\n");
-    printf("  chmodd <rep> <cible> <perm>.............Modifie permissions répertoire\n");
-    printf("    (cibles: -Owner, -Group, -Others)\n");
-    printf("    (perm: combinaison de rwx, ex: rw-)\n\n");
+    printf("  chmodf <fichier> <cible> <perm>.............Modifie permissions fichier\n");
+    printf("  chmodd <rep> <cible> <perm>.................Modifie permissions répertoire\n");
+    printf("  -----(cibles: -Owner, -Group, -Others)\n");
+    printf("  -----(perm: combinaison de rwx, ex: rw-)\n\n");
 
     printf("Gestion des groupes :\n");
-    printf("  lsgroups................................Liste les groupes de l'utilisateur\n");
-    printf("  chgroup <nom>...........................Change le groupe actuel\n");
-    printf("  curgroup................................Affiche le groupe actuel\n");
-    printf("  crtgroup <nom>..........................Crée un nouveau groupe\n");
-    printf("  leavegroup <nom>........................Quitter un groupe\n");
-    printf("  lsmembers <nom>.........................Liste les membres d'un groupe\n");
-    printf("  sudo delgroup <nom>.....................Supprime un groupe (admin)\n");
-    printf("  sudo add <nom> <pers>...................Ajoute un utilisateur au groupe (admin)\n");
-    printf("  sudo remove <pers> <nom>................Retire un utilisateur du groupe (admin)\n\n");
+    printf("  lsgroups....................................Liste les groupes de l'utilisateur\n");
+    printf("  chgroup <nom>...............................Change le groupe actuel\n");
+    printf("  curgroup....................................Affiche le groupe actuel\n");
+    printf("  crtgroup <nom>..............................Crée un nouveau groupe\n");
+    printf("  leavegroup <nom>............................Quitter un groupe\n");
+    printf("  lsmembers <nom>.............................Liste les membres d'un groupe\n");
+    printf("  sudo delgroup <nom>.........................Supprime un groupe (admin)\n");
+    printf("  sudo add <nom> <pers>.......................Ajoute un utilisateur au groupe (admin)\n");
+    printf("  sudo remove <pers> <nom>....................Retire un utilisateur du groupe (admin)\n\n");
 
     printf("Commandes administrateur (sudo) :\n");
-    printf("  sudo passwd.............................Affiche le mot de passe (admin)\n");
-    printf("  sudo chgpasswd..........................Change le mot de passe (admin)\n");
-    printf("  sudo trace..............................Affiche la trace d'exécution (admin)\n");
-    printf("  sudo deluser <nom>......................Supprime un compte utilisateur (admin)\n");
-    printf("  sudo resetuser <nom>....................Réinitialise un répertoire utilisateur (admin)\n\n");
-    printf("  sudo addadmin <nom>.....................Ajoute un utilisateur en admin (superadmin)\n");
-    printf("  sudo deladmin <nom>.....................Retire un utilisateur en admin (superadmin)\n\n");
+    printf("  sudo passwd.................................Affiche le mot de passe (admin)\n");
+    printf("  sudo chgpasswd..............................Change le mot de passe (admin)\n");
+    printf("  sudo trace..................................Affiche la trace d'exécution (admin)\n");
+    printf("  sudo deluser <nom>..........................Supprime un compte utilisateur (admin)\n");
+    printf("  sudo resetuser <nom>........................Réinitialise un répertoire utilisateur (admin)\n\n");
+    printf("  sudo addadmin <nom>.........................Ajoute un utilisateur en admin (superadmin)\n");
+    printf("  sudo deladmin <nom>.........................Retire un utilisateur en admin (superadmin)\n\n");
 
     printf("Système :\n");
-    printf("  free....................................Affiche les blocs libres\n\n");
+    printf("  free........................................Affiche les blocs libres\n\n");
 
     printf("Note : Les commandes admin nécessitent le mot de passe sudo\n");
 }
