@@ -1410,42 +1410,42 @@ int directory_exists(Filesystem *fs, const char *path) {
 }
 
 // Fonction pour copier un fichier
-int copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamefinal, const char *nomrepertoire) {
+int copy_file(Filesystem *fs, const char *file_name, const char *link_name, const char *rep_name) {
     char full_path_source[MAX_FILENAME * 2];
-    char full_path_dest[MAX_FILENAME * 2];
+    char full_file_path[MAX_FILENAME * 2];
     char dest_directory[MAX_FILENAME * 2];
     char prevent_path[MAX_FILENAME * 2];
     strncpy(prevent_path, fs->current_directory, MAX_FILENAME);
 
     // Construire le chemin complet du fichier source
-    snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, filenamedepart);
+    snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, file_name);
 
-    if (nomrepertoire != NULL) {
-        // Vérifier si le nomrepertoire est un chemin complet ou un répertoire relatif
-        if (strchr(nomrepertoire, '/') != NULL) {
+    if (rep_name != NULL) {
+        // Vérifier si le rep_name est un chemin complet ou un répertoire relatif
+        if (strchr(rep_name, '/') != NULL) {
             char exists_path[MAX_FILENAME * 2 - 2];
             // C'est un répertoire relatif au répertoire courant
-            snprintf(exists_path, sizeof(exists_path), "%s/%s", fs->current_directory, nomrepertoire);
+            snprintf(exists_path, sizeof(exists_path), "%s/%s", fs->current_directory, rep_name);
             // C'est un chemin complet
             if (!directory_exists(fs, exists_path)) {
-                printf("Le répertoire '%s' n'existe pas.\n", nomrepertoire);
+                printf("Le répertoire '%s' n'existe pas.\n", rep_name);
                 return 0;
             }
 
-            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", exists_path, filenamefinal);
-        } else if (strcmp(nomrepertoire, "..") == 0) {
-            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", retirer_suffixe(fs->current_directory), filenamefinal); // Chemin relatif au répertoire parent
+            snprintf(full_file_path, sizeof(full_file_path), "%s/%s", exists_path, link_name);
+        } else if (strcmp(rep_name, "..") == 0) {
+            snprintf(full_file_path, sizeof(full_file_path), "%s/%s", retirer_suffixe(fs->current_directory), link_name); // Chemin relatif au répertoire parent
         } else {
             // C'est un répertoire relatif au répertoire courant
-            snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, nomrepertoire);
+            snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, rep_name);
             if (!directory_exists(fs, dest_directory)) {
-                printf("Le répertoire '%s' n'existe pas dans le répertoire courant.\n", nomrepertoire);
+                printf("Le répertoire '%s' n'existe pas dans le répertoire courant.\n", rep_name);
                 return 0;
             }
-            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s/%s", fs->current_directory, nomrepertoire, filenamefinal);
+            snprintf(full_file_path, sizeof(full_file_path), "%s/%s/%s", fs->current_directory, rep_name, link_name);
         }
     } else {
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", fs->current_directory, filenamefinal);
+        snprintf(full_file_path, sizeof(full_file_path), "%s/%s", fs->current_directory, link_name);
     }
     
 
@@ -1459,14 +1459,14 @@ int copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamefi
     }
 
     if (!source_inode) {
-        printf("Fichier source '%s' introuvable ou est un répertoire.\n", filenamedepart);
+        printf("Fichier source '%s' introuvable ou est un répertoire.\n", file_name);
         return 0;
     }
 
     // Vérifier si le fichier de destination existe déjà
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_dest) == 0) {
-            printf("Le fichier de destination '%s' existe déjà.\n", filenamefinal);
+        if (strcmp(fs->inodes[i].name, full_file_path) == 0) {
+            printf("Le fichier de destination '%s' existe déjà.\n", link_name);
             return 0;
         }
     }
@@ -1479,7 +1479,7 @@ int copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamefi
 
     // Copier les métadonnées du fichier source
     Inode *dest_inode = &fs->inodes[fs->inode_count];
-    strcpy(dest_inode->name, full_path_dest);
+    strcpy(dest_inode->name, full_file_path);
     dest_inode->is_directory = 0;
     dest_inode->is_file = 1;
     dest_inode->size = source_inode->size;
@@ -1509,15 +1509,15 @@ int copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamefi
 
     // Sauvegarder le système de fichiers
     save_filesystem(fs);
-    printf("Fichier '%s' copié vers '%s'.\n", filenamedepart, full_path_dest);
+    printf("Fichier '%s' copié vers '%s'.\n", file_name, full_file_path);
     strncpy(fs->current_directory, prevent_path, MAX_FILENAME);
     return 1;
 }
 
 // Fonction pour déplacer un fichier
-int move_file(Filesystem *fs, const char *filename, const char *nomrepertoire) {
+int move_file(Filesystem *fs, const char *filename, const char *rep_name) {
     char full_path_source[MAX_FILENAME * 2];
-    char full_path_dest[MAX_FILENAME * 2];
+    char full_file_path[MAX_FILENAME * 2];
     char dest_directory[MAX_FILENAME * 2];
     char prevent_path[MAX_FILENAME * 2];
     strncpy(prevent_path, fs->current_directory, MAX_FILENAME);
@@ -1525,27 +1525,27 @@ int move_file(Filesystem *fs, const char *filename, const char *nomrepertoire) {
     // Construire le chemin complet du fichier source
     snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, filename);
 
-    // Vérifier si le nomrepertoire est un chemin complet ou un répertoire relatif
-    if (strchr(nomrepertoire, '/') != NULL) {
+    // Vérifier si le rep_name est un chemin complet ou un répertoire relatif
+    if (strchr(rep_name, '/') != NULL) {
         char exists_path[MAX_FILENAME * 2-2];
         // C'est un répertoire relatif au répertoire courant
-        snprintf(exists_path, sizeof(exists_path), "%s/%s", fs->current_directory, nomrepertoire);
+        snprintf(exists_path, sizeof(exists_path), "%s/%s", fs->current_directory, rep_name);
         // C'est un chemin complet
         if (!directory_exists(fs, exists_path)) {
-            printf("Le répertoire '%s' n'existe pas.\n", nomrepertoire);
+            printf("Le répertoire '%s' n'existe pas.\n", rep_name);
             return 0;
         }
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", exists_path, filename);
-    } else if (strcmp(nomrepertoire, "..") == 0) {
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", retirer_suffixe(fs->current_directory), filename); // Chemin relatif au répertoire parent
+        snprintf(full_file_path, sizeof(full_file_path), "%s/%s", exists_path, filename);
+    } else if (strcmp(rep_name, "..") == 0) {
+        snprintf(full_file_path, sizeof(full_file_path), "%s/%s", retirer_suffixe(fs->current_directory), filename); // Chemin relatif au répertoire parent
     } else {
         // C'est un répertoire relatif au répertoire courant
-        snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, nomrepertoire);
+        snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, rep_name);
         if (!directory_exists(fs, dest_directory)) {
-            printf("Le répertoire '%s' n'existe pas dans le répertoire courant.\n", nomrepertoire);
+            printf("Le répertoire '%s' n'existe pas dans le répertoire courant.\n", rep_name);
             return 0;
         }
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s/%s", fs->current_directory, nomrepertoire, filename);
+        snprintf(full_file_path, sizeof(full_file_path), "%s/%s/%s", fs->current_directory, rep_name, filename);
     }
 
     // Rechercher le fichier source dans les inodes
@@ -1566,7 +1566,7 @@ int move_file(Filesystem *fs, const char *filename, const char *nomrepertoire) {
 
     // Vérifier si le fichier de destination existe déjà
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_dest) == 0) {
+        if (strcmp(fs->inodes[i].name, full_file_path) == 0) {
             printf("Le fichier de destination '%s' existe déjà.\n", filename);
             return 0;
         }
@@ -1580,7 +1580,7 @@ int move_file(Filesystem *fs, const char *filename, const char *nomrepertoire) {
 
     // Copier les métadonnées du fichier source
     Inode *dest_inode = &fs->inodes[fs->inode_count];
-    strcpy(dest_inode->name, full_path_dest);
+    strcpy(dest_inode->name, full_file_path);
     dest_inode->is_directory = 0;
     dest_inode->is_file = 1;
     dest_inode->size = source_inode->size;
@@ -1606,7 +1606,7 @@ int move_file(Filesystem *fs, const char *filename, const char *nomrepertoire) {
 
     // Sauvegarder le système de fichiers
     save_filesystem(fs);
-    printf("Fichier '%s' déplacé vers '%s'.\n", filename, full_path_dest);
+    printf("Fichier '%s' déplacé vers '%s'.\n", filename, full_file_path);
     strncpy(fs->current_directory, prevent_path, MAX_FILENAME);
     return 1;
 }
@@ -1764,10 +1764,10 @@ int copy_repertoire(Filesystem *fs, const char *source_dir, const char *dest_nam
 }
 
 // Fonction pour déplacer un repertoire
-int move_directory(Filesystem *fs, const char *repertoirename, const char *nomrepertoire) {
+int move_directory(Filesystem *fs, const char *repertoirename, const char *rep_name) {
     // Chemins complets pour le répertoire source et de destination
     char full_path_source[MAX_FILENAME * 2];
-    char full_path_dest[MAX_FILENAME * 2];
+    char full_file_path[MAX_FILENAME * 2];
     char dest_directory[MAX_FILENAME * 2];
     char prevent_path[MAX_FILENAME * 2];
     strncpy(prevent_path, fs->current_directory, MAX_FILENAME);
@@ -1791,66 +1791,66 @@ int move_directory(Filesystem *fs, const char *repertoirename, const char *nomre
         return 0;
     }
 
-    // Vérifier si le nomrepertoire est un chemin complet ou un répertoire relatif
-    if (strchr(nomrepertoire, '/') != NULL) {            
+    // Vérifier si le rep_name est un chemin complet ou un répertoire relatif
+    if (strchr(rep_name, '/') != NULL) {            
         char exists_path[MAX_FILENAME * 2 - 2];
         // C'est un répertoire relatif au répertoire courant
-        snprintf(exists_path, sizeof(exists_path), "%s/%s", fs->current_directory, nomrepertoire);
+        snprintf(exists_path, sizeof(exists_path), "%s/%s", fs->current_directory, rep_name);
         // C'est un chemin complet
         if (!directory_exists(fs, exists_path)) {
-            printf("Erreur : le répertoire de destination '%s' n'existe pas.\n", nomrepertoire);
+            printf("Erreur : le répertoire de destination '%s' n'existe pas.\n", rep_name);
             return 0;
         }
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", exists_path, repertoirename);
-    } else if (strcmp(nomrepertoire, "..") == 0) {
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", retirer_suffixe(fs->current_directory), repertoirename); // Chemin relatif au répertoire parent
+        snprintf(full_file_path, sizeof(full_file_path), "%s/%s", exists_path, repertoirename);
+    } else if (strcmp(rep_name, "..") == 0) {
+        snprintf(full_file_path, sizeof(full_file_path), "%s/%s", retirer_suffixe(fs->current_directory), repertoirename); // Chemin relatif au répertoire parent
     } else {
         // C'est un répertoire relatif au répertoire courant
-        snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, nomrepertoire);
+        snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, rep_name);
         if (!directory_exists(fs, dest_directory)) {
-            printf("Erreur : le répertoire de destination '%s' n'existe pas dans le répertoire courant.\n", nomrepertoire);
+            printf("Erreur : le répertoire de destination '%s' n'existe pas dans le répertoire courant.\n", rep_name);
             return 0;
         }
-        snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s/%s", fs->current_directory, nomrepertoire, repertoirename);
+        snprintf(full_file_path, sizeof(full_file_path), "%s/%s/%s", fs->current_directory, rep_name, repertoirename);
     }
 
     // Vérifier si le répertoire de destination existe déjà
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_dest) == 0) {
-            printf("Erreur : le répertoire de destination '%s' existe déjà.\n", full_path_dest);
+        if (strcmp(fs->inodes[i].name, full_file_path) == 0) {
+            printf("Erreur : le répertoire de destination '%s' existe déjà.\n", full_file_path);
             return 0;
         }
     }
 
     // Mettre à jour le chemin du répertoire source
-    strcpy(source_inode->name, full_path_dest);
+    strcpy(source_inode->name, full_file_path);
 
     // Mettre à jour les chemins des fichiers et sous-répertoires dans le répertoire déplacé
     for (int i = 0; i < fs->inode_count; i++) {
         if (strstr(fs->inodes[i].name, full_path_source) == fs->inodes[i].name) {
             // Construire le nouveau chemin en remplaçant le chemin source par le chemin de destination
             char new_path[MAX_FILENAME * 4];
-            snprintf(new_path, sizeof(new_path), "%s%s", full_path_dest, fs->inodes[i].name + strlen(full_path_source));
+            snprintf(new_path, sizeof(new_path), "%s%s", full_file_path, fs->inodes[i].name + strlen(full_path_source));
             strcpy(fs->inodes[i].name, new_path);
         }
     }
 
     // Sauvegarder le système de fichiers
     save_filesystem(fs);
-    printf("Répertoire '%s' déplacé vers '%s'.\n", full_path_source, full_path_dest);
+    printf("Répertoire '%s' déplacé vers '%s'.\n", full_path_source, full_file_path);
     strncpy( fs->current_directory, prevent_path,MAX_FILENAME);
     return 1;
 }
 
 // Fonction rénommer un fichier
-int rename_file(Filesystem *fs, const char *filenamedepart, const char *filenamefinal) {
+int rename_file(Filesystem *fs, const char *file_name, const char *link_name) {
     char full_path_source[MAX_FILENAME * 2];
-    char full_path_dest[MAX_FILENAME * 2];
+    char full_file_path[MAX_FILENAME * 2];
 
     // Construire le chemin complet du fichier source
-    snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, filenamedepart);
+    snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, file_name);
     // Construire le chemin complet du fichier source
-    snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", fs->current_directory, filenamefinal);
+    snprintf(full_file_path, sizeof(full_file_path), "%s/%s", fs->current_directory, link_name);
 
     // Rechercher le fichier source dans les inodes
     Inode *source_inode = NULL;
@@ -1864,33 +1864,33 @@ int rename_file(Filesystem *fs, const char *filenamedepart, const char *filename
     }
 
     if (!source_inode) {
-        printf("Fichier source '%s' introuvable ou est un répertoire.\n", filenamedepart);
+        printf("Fichier source '%s' introuvable ou est un répertoire.\n", file_name);
         return 0;
     }
 
     // Vérifier si le fichier de destination existe déjà
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_dest) == 0 && fs->inodes[i].is_file) {
-            printf("Le fichier de destination '%s' existe déjà.\n", filenamefinal);
+        if (strcmp(fs->inodes[i].name, full_file_path) == 0 && fs->inodes[i].is_file) {
+            printf("Le fichier de destination '%s' existe déjà.\n", link_name);
             return 0;
         }
     }
-    strcpy(fs->inodes[index_inode].name, full_path_dest);
+    strcpy(fs->inodes[index_inode].name, full_file_path);
     // Sauvegarder le système de fichiers
     save_filesystem(fs);
-    printf("Fichier '%s' renommé en '%s'.\n", filenamedepart, filenamefinal);
+    printf("Fichier '%s' renommé en '%s'.\n", file_name, link_name);
     return 1;
 }
 
 // Fonction rénommer un répertoire
 int rename_directory(Filesystem *fs, const char *repnamedepart, const char *repnamefinal) {
     char full_path_source[MAX_FILENAME * 2];
-    char full_path_dest[MAX_FILENAME * 2];
+    char full_file_path[MAX_FILENAME * 2];
 
     // Construire le chemin complet du fichier source
     snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, repnamedepart);
     // Construire le chemin complet du fichier source
-    snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", fs->current_directory, repnamefinal);
+    snprintf(full_file_path, sizeof(full_file_path), "%s/%s", fs->current_directory, repnamefinal);
 
     // Rechercher le fichier source dans les inodes
     Inode *source_inode = NULL;
@@ -1910,12 +1910,12 @@ int rename_directory(Filesystem *fs, const char *repnamedepart, const char *repn
 
     // Vérifier si le fichier de destination existe déjà
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_dest) == 0 && fs->inodes[i].is_directory) {
+        if (strcmp(fs->inodes[i].name, full_file_path) == 0 && fs->inodes[i].is_directory) {
             printf("Le répertoire de destination '%s' existe déjà.\n", repnamefinal);
             return 0;
         }
     }
-    strcpy(fs->inodes[index_inode].name, full_path_dest);
+    strcpy(fs->inodes[index_inode].name, full_file_path);
     // Sauvegarder le système de fichiers
     save_filesystem(fs);
     printf("Répertoire '%s' renommé en '%s'.\n", repnamedepart, repnamefinal);
@@ -2850,56 +2850,70 @@ int is_hard_link_for(Filesystem *fs, const char *file_base, const char *hard_lin
 // Fonction pour trouver le fichier de base d'un lien symbolique
 char* get_symbolic_link_target(Filesystem *fs, const char *symb_link) {
     // Construire le chemin complet du lien symbolique
-    
-    // Construire le chemin complet du lien symbolique
-    Inode *inod = get_inode_by_name(fs, symb_link);
-    if (inod == NULL) {
-        printf("Erreur : Lien symbolique '%s' introuvable.\n", symb_link);
-        return NULL;
-    }
+    char full_link_path[MAX_FILENAME * 2];
+    snprintf(full_link_path, sizeof(full_link_path), "%s/%s", fs->current_directory, symb_link);
 
     // Parcourir tous les inodes pour trouver le lien symbolique
     for (int i = 0; i < fs->inode_count; i++) {
-        if (fs->inodes[i].is_file) {
-            for (int j = 0; j < NUM_LIEN_MAX; j++) {
-                if (strcmp(fs->inodes[i].lien.symbolicLink[j].data, symb_link) == 0 ) {
-                    return fs->inodes[i].name;
+        if (strcmp(fs->inodes[i].name, full_link_path) == 0 && fs->inodes[i].is_link) {
+            // Ceci est le lien symbolique - trouver le fichier qui le référence
+            for (int j = 0; j < fs->inode_count; j++) {
+                // Vérifier tous les fichiers qui pourraient pointer vers ce lien
+                if (fs->inodes[j].is_file) {
+                    for (int k = 0; k < NUM_LIEN_MAX; k++) {
+                        if (strcmp(fs->inodes[j].lien.symbolicLink[k].data, full_link_path) == 0) {
+                            return fs->inodes[j].name; // Retourner le nom du fichier original
+                        }
+                    }
                 }
             }
         }
     }
-    return NULL; // Lien symbolique non trouvé
+    
+    printf("Erreur : Lien symbolique '%s' introuvable ou ne pointe vers aucun fichier.\n", symb_link);
+    return NULL;
 }
 
 // Fonction pour trouver le fichier original d'un hardlink
 char* get_hardlink_original(Filesystem *fs, const char *hard_link) {
-    // Construire le chemin complet du lien symbolique
-    
-    // Construire le chemin complet du lien symbolique
-    Inode *inod = get_inode_by_name(fs, hard_link);
-    if (inod == NULL) {
-        printf("Erreur : Lien matériel '%s' introuvable.\n", hard_link);
+    // Construire le chemin complet du hardlink
+    char full_link_path[MAX_FILENAME * 2];
+    snprintf(full_link_path, sizeof(full_link_path), "%s/%s", fs->current_directory, hard_link);
+
+    // Vérifier si le hardlink existe
+    Inode *link_inode = NULL;
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, full_link_path) == 0) {
+            link_inode = &fs->inodes[i];
+            break;
+        }
+    }
+
+    if (link_inode == NULL) {
+        printf("Erreur : Hardlink '%s' introuvable.\n", hard_link);
         return NULL;
     }
 
-    // Parcourir tous les inodes pour trouver le lien symbolique
+    // Trouver l'original en cherchant un fichier avec le même numéro d'inode
     for (int i = 0; i < fs->inode_count; i++) {
-        if (fs->inodes[i].is_file) {
-            for (int j = 0; j < NUM_LIEN_MAX; j++) {
-                if (strcmp(fs->inodes[i].lien.hardLink[j].data, hard_link) == 0 ) {
-                    return fs->inodes[i].name;
-                }
-            }
+        if (fs->inodes[i].inode_number == link_inode->inode_number && 
+            strcmp(fs->inodes[i].name, full_link_path) != 0) {
+            // On a trouvé un fichier avec le même inode_number mais un nom différent
+            return fs->inodes[i].name;
         }
     }
-    return NULL; // Lien symbolique non trouvé
+
+    // Si on arrive ici, c'est que le hardlink est peut-être l'original lui-même
+    // ou qu'il n'y a pas d'autre fichier avec le même inode_number
+    printf("Avertissement : Aucun fichier original trouvé pour le hardlink '%s'.\n", hard_link);
+    return NULL;
 }
 
 //=============================================================================
 //=============================================================================
 
 // Fonction pour créer un lien symbolique
-int create_symbolic_link(Filesystem *fs, const char *file_name, const char *link_name) {
+int create_symbolic_link(Filesystem *fs, const char *file_name, const char *link_name,  const char *rep_name) {
     // Vérifier si on a atteint le nombre maximal de fichiers
     if (fs->inode_count >= MAX_FILES) {
         printf("Nombre maximum de fichiers atteint !\n");
@@ -2909,16 +2923,42 @@ int create_symbolic_link(Filesystem *fs, const char *file_name, const char *link
     // Construire les chemins complets
     char full_file_path[MAX_FILENAME * 2];
     char full_link_path[MAX_FILENAME * 2];
-    
-    // Si le nom de fichier est un chemin absolu (commence par '/')
-    if (file_name[0] == '/') {
-        strncpy(full_file_path, file_name, sizeof(full_file_path));
+    char dest_directory[MAX_FILENAME * 2];
+
+
+    char prevent_path[MAX_FILENAME * 2];
+    strncpy(prevent_path, fs->current_directory, MAX_FILENAME);
+
+    // Construire le chemin complet du fichier source
+    snprintf(full_file_path, sizeof(full_file_path), "%s/%s", fs->current_directory, file_name);
+
+    if (rep_name != NULL) {
+        // Vérifier si le rep_name est un chemin complet ou un répertoire relatif
+        if (strchr(rep_name, '/') != NULL) {
+            char exists_path[MAX_FILENAME * 2 - 2];
+            // C'est un répertoire relatif au répertoire courant
+            snprintf(exists_path, sizeof(exists_path), "%s/%s", fs->current_directory, rep_name);
+            // C'est un chemin complet
+            if (!directory_exists(fs, exists_path)) {
+                printf("Le répertoire '%s' n'existe pas.\n", rep_name);
+                return 0;
+            }
+
+            snprintf(full_link_path, sizeof(full_link_path), "%s/%s", exists_path, link_name);
+        } else if (strcmp(rep_name, "..") == 0) {
+            snprintf(full_link_path, sizeof(full_link_path), "%s/%s", retirer_suffixe(fs->current_directory), link_name); // Chemin relatif au répertoire parent
+        } else {
+            // C'est un répertoire relatif au répertoire courant
+            snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, rep_name);
+            if (!directory_exists(fs, dest_directory)) {
+                printf("Le répertoire '%s' n'existe pas dans le répertoire courant.\n", rep_name);
+                return 0;
+            }
+            snprintf(full_link_path, sizeof(full_link_path), "%s/%s/%s", fs->current_directory, rep_name, link_name);
+        }
     } else {
-        snprintf(full_file_path, sizeof(full_file_path), "%s/%s", fs->current_directory, file_name);
+        snprintf(full_link_path, sizeof(full_link_path), "%s/%s", fs->current_directory, link_name);
     }
-    
-    // Chemin pour le lien symbolique
-    snprintf(full_link_path, sizeof(full_link_path), "%s/%s", fs->current_directory, link_name);
 
     // Vérifier si le fichier source existe
     Inode *source_inode = NULL;
@@ -2996,6 +3036,7 @@ int create_symbolic_link(Filesystem *fs, const char *file_name, const char *link
     fs->inode_count++;
     source_inode->num_liens++; // Incrémenter le nombre de blocs du fichier source
     save_filesystem(fs);
+    strncpy( fs->current_directory,prevent_path, MAX_FILENAME);
     
     printf("Lien symbolique '%s' créé vers '%s'.\n", full_link_path, full_file_path);
     return 1;
@@ -3009,19 +3050,22 @@ int read_symbolic_link(Filesystem *fs, const char *link_name) {
         printf("Erreur : Lien symbolique '%s' introuvable.\n", link_name);
         return 0;
     }
+
+    char *file_inode = get_symbolic_link_target(fs, link_name);
+    if (file_inode == NULL) {
+        printf("Erreur : Fichier pointé par le lien symbolique introuvable.\n");
+        return 0;
+    }
+
     int inode_index = link_inode->inode_number;
     // Vérifier si le lien symbolique pointe vers un fichier
     if (link_inode->is_link) {
         // Parcourir tous les inodes pour trouver le fichier pointé par le lien
         for (int i = 0; i < fs->inode_count; i++) {
-            if (fs->inodes[i].inode_number == inode_index) {
+            if (fs->inodes[i].is_file && fs->inodes[i].inode_number == inode_index) {
                 read_file(fs,last_element(fs->inodes[i].name)); // Appeler la fonction de lecture de fichier
                 return 1;
-            } else {
-                printf("Erreur : Le lien symbolique '%s' ne pointe pas vers un fichier valide.\n", link_name);
-                return 0;
             }
-
         }
     } else {
         printf("Erreur : '%s' n'est pas un lien symbolique.\n", link_name);
@@ -3076,7 +3120,7 @@ int write_symbolic_link(Filesystem *fs, const char *link_name, const char *data)
         // Parcourir tous les inodes pour trouver le fichier pointé par le lien
         for (int i = 0; i < fs->inode_count; i++) {
             if (fs->inodes[i].inode_number == link_inode->inode_number) {
-                write_to_file(fs, fs->inodes[i].name, data); // Appeler la fonction d'écriture de fichier
+                write_to_file(fs, last_element(fs->inodes[i].name), data); // Appeler la fonction d'écriture de fichier
                 return 1;
             }
         }
@@ -3090,11 +3134,11 @@ int write_symbolic_link(Filesystem *fs, const char *link_name, const char *data)
 // Fonction pour créer un lien matériel*****************************************************************
 int create_hard_link(Filesystem *fs, const char *existing_file, const char *new_link) {
     char full_path_source[MAX_FILENAME * 2];
-    char full_path_dest[MAX_FILENAME * 2];
+    char full_file_path[MAX_FILENAME * 2];
 
     // Construire les chemins complets
     snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, existing_file);
-    snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", fs->current_directory, new_link);
+    snprintf(full_file_path, sizeof(full_file_path), "%s/%s", fs->current_directory, new_link);
 
     // Vérifier si le fichier source existe
     Inode *source_inode = NULL;
@@ -3114,7 +3158,7 @@ int create_hard_link(Filesystem *fs, const char *existing_file, const char *new_
 
     // Vérifier si le lien de destination existe déjà
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, full_path_dest) == 0) {
+        if (strcmp(fs->inodes[i].name, full_file_path) == 0) {
             printf("Le fichier de destination '%s' existe déjà.\n", new_link);
             return 0;
         }
@@ -3127,7 +3171,7 @@ int create_hard_link(Filesystem *fs, const char *existing_file, const char *new_
     }
 
     // Ajouter l'entrée du lien matériel dans la structure du fichier source
-    strncpy(source_inode->lien.hardLink[source_inode->num_liens].data, full_path_dest, MAX_FILENAME);
+    strncpy(source_inode->lien.hardLink[source_inode->num_liens].data, full_file_path, MAX_FILENAME);
     source_inode->num_liens++;
 
     // Créer une nouvelle entrée d'inode pour le lien
@@ -3138,7 +3182,7 @@ int create_hard_link(Filesystem *fs, const char *existing_file, const char *new_
 
     // Copier toutes les métadonnées du fichier source
     Inode *dest_inode = &fs->inodes[fs->inode_count];
-    strcpy(dest_inode->name, full_path_dest);
+    strcpy(dest_inode->name, full_file_path);
     dest_inode->is_directory = 0;
     dest_inode->size = source_inode->size;
     dest_inode->creation_time = time(NULL); // Le lien a sa propre date de création
@@ -3164,7 +3208,7 @@ int create_hard_link(Filesystem *fs, const char *existing_file, const char *new_
         for (int j = 0; j < fs->inodes[i].num_liens; j++) {
             if (strcmp(fs->inodes[i].lien.hardLink[j].data, full_path_source) == 0) {
                 // Ajouter le nouveau lien à cet inode également
-                strncpy(fs->inodes[i].lien.hardLink[fs->inodes[i].num_liens].data, full_path_dest, MAX_FILENAME);
+                strncpy(fs->inodes[i].lien.hardLink[fs->inodes[i].num_liens].data, full_file_path, MAX_FILENAME);
                 fs->inodes[i].num_liens++;
                 break;
             }
@@ -3555,9 +3599,9 @@ void shell(Filesystem *fs, char *current_own) {
             }
         } else if (strncmp(command, "mvdir", 5) == 0) {
             char repertoirename[MAX_DIRECTORY];
-            char nomrepertoire[MAX_DIRECTORY];
-            sscanf(command + 6, "%s %s", repertoirename, nomrepertoire);
-            if (move_directory(fs, repertoirename, nomrepertoire)) {
+            char rep_name[MAX_DIRECTORY];
+            sscanf(command + 6, "%s %s", repertoirename, rep_name);
+            if (move_directory(fs, repertoirename, rep_name)) {
                 success = 'o'; // Si le déplacement du répertoire réussit
             } else {
                 success = 'n'; // Si le déplacement du répertoire échoue
@@ -3608,13 +3652,36 @@ void shell(Filesystem *fs, char *current_own) {
                 success = 'n'; // Si la création du répertoire échoue
             }
         }  else if (strncmp(command, "lns", 3) == 0) {
-            char target_path[MAX_FILENAME];
+            char file_name[MAX_FILENAME];
             char link_name[MAX_FILENAME];
-            sscanf(command + 4, "%s %s", link_name, target_path);
-            if (create_symbolic_link(fs, link_name, target_path)) {
-                success = 'o'; // Si la création du répertoire réussit
+            char repertoire[MAX_DIRECTORY];
+
+            // Initialiser les variables à des chaînes vides pour éviter les erreurs
+            file_name[0] = '\0';
+            link_name[0] = '\0';
+            repertoire[0] = '\0';
+        
+            int count = sscanf(command + 3, "%s %s %s", file_name, link_name, repertoire);
+        
+            // Vérifier si toutes les valeurs ont été correctement lues
+            if (count < 2) { 
+                printf("Erreur : commande incorrecte. Format attendu : lns <source> <destination> [répertoire]\n");
+                return;
+            }
+        
+            // Vérifier si le répertoire a été fourni ou non
+            if (count < 3 || strlen(repertoire) == 0) {
+                if (create_symbolic_link(fs, file_name, link_name, NULL)) {
+                    success = 'o'; // Si la création du répertoire réussit
+                } else {
+                    success = 'n'; // Si la création du répertoire échoue
+                }
             } else {
-                success = 'n'; // Si la création du répertoire échoue
+                if (create_symbolic_link(fs, file_name, link_name, repertoire)) {
+                    success = 'o'; // Si la création du répertoire réussit
+                } else {
+                    success = 'n'; // Si la création du répertoire échoue
+                }
             }
         }  else if (strncmp(command, "writes", 6) == 0) {
             char linkname[MAX_FILENAME];
@@ -3700,16 +3767,16 @@ void shell(Filesystem *fs, char *current_own) {
                 success = 'n'; // Si la suppression du fichier échoue
             }
         } else if (strncmp(command, "cp", 2) == 0) {
-            char filenamedepart[MAX_FILENAME];
-            char filenamefinal[MAX_FILENAME];
+            char file_name[MAX_FILENAME];
+            char link_name[MAX_FILENAME];
             char repertoire[MAX_DIRECTORY];
 
             // Initialiser les variables à des chaînes vides pour éviter les erreurs
-            filenamedepart[0] = '\0';
-            filenamefinal[0] = '\0';
+            file_name[0] = '\0';
+            link_name[0] = '\0';
             repertoire[0] = '\0';
         
-            int count = sscanf(command + 3, "%s %s %s", filenamedepart, filenamefinal, repertoire);
+            int count = sscanf(command + 3, "%s %s %s", file_name, link_name, repertoire);
         
             // Vérifier si toutes les valeurs ont été correctement lues
             if (count < 2) { 
@@ -3719,13 +3786,13 @@ void shell(Filesystem *fs, char *current_own) {
         
             // Vérifier si le répertoire a été fourni ou non
             if (count < 3 || strlen(repertoire) == 0) {
-                if (copy_file(fs, filenamedepart, filenamefinal, NULL)) {
+                if (copy_file(fs, file_name, link_name, NULL)) {
                     success = 'o'; // Si la création du répertoire réussit
                 } else {
                     success = 'n'; // Si la création du répertoire échoue
                 }
             } else {
-                if (copy_file(fs, filenamedepart, filenamefinal, repertoire)) {
+                if (copy_file(fs, file_name, link_name, repertoire)) {
                     success = 'o'; // Si la création du répertoire réussit
                 } else {
                     success = 'n'; // Si la création du répertoire échoue
@@ -3733,9 +3800,9 @@ void shell(Filesystem *fs, char *current_own) {
             }
         } else if (strncmp(command, "mv", 2) == 0) {
             char filename[MAX_FILENAME];
-            char nomrepertoire[MAX_DIRECTORY];
-            sscanf(command + 3, "%s %s", filename, nomrepertoire);
-            if (move_file(fs, filename, nomrepertoire)) {
+            char rep_name[MAX_DIRECTORY];
+            sscanf(command + 3, "%s %s", filename, rep_name);
+            if (move_file(fs, filename, rep_name)) {
                 success = 'o'; // Si le déplacement du fichier réussit
             } else {
                 success = 'n'; // Si le déplacement du fichier échoue
@@ -3759,10 +3826,10 @@ void shell(Filesystem *fs, char *current_own) {
             printf("Utilisateur actuel : %s\n", current_own);
             success = 'o'; // Si l'affichage de l'utilisateur actuel réussit 
         } else if (strncmp(command, "mvf", 3) == 0) {
-            char filenamedepart[MAX_FILENAME];
-            char filenamefinal[MAX_FILENAME];
-            sscanf(command + 4, "%s %s", filenamedepart, filenamefinal);
-            if (rename_file(fs,filenamedepart,filenamefinal)) {
+            char file_name[MAX_FILENAME];
+            char link_name[MAX_FILENAME];
+            sscanf(command + 4, "%s %s", file_name, link_name);
+            if (rename_file(fs,file_name,link_name)) {
                 success = 'o'; // Si le déplacement du fichier réussit
             } else {
                 success = 'n'; // Si le déplacement du fichier échoue
