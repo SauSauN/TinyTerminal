@@ -119,6 +119,7 @@ int delete_directory(Filesystem *fs, const char *dirname);
 int user_add_group(Filesystem *fs, const char *groupname);
 Inode* get_inode_by_name(Filesystem *fs, const char *filename);
 char* extract_path(const char* full_path);
+char *retirer_suffixe(char *str);
 char* last_element(const char* full_path);
 int reset_user_workspace(Filesystem *fs, const char *username);
 int create_directory_group(Filesystem *fs, const char *dirname);
@@ -1401,6 +1402,8 @@ int copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamefi
     char full_path_source[MAX_FILENAME * 2];
     char full_path_dest[MAX_FILENAME * 2];
     char dest_directory[MAX_FILENAME * 2];
+    char prevent_path[MAX_FILENAME * 2];
+    strncpy(prevent_path, fs->current_directory, MAX_FILENAME);
 
     // Construire le chemin complet du fichier source
     snprintf(full_path_source, sizeof(full_path_source), "%s/%s", fs->current_directory, filenamedepart);
@@ -1408,12 +1411,18 @@ int copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamefi
     if (nomrepertoire != NULL) {
         // Vérifier si le nomrepertoire est un chemin complet ou un répertoire relatif
         if (strchr(nomrepertoire, '/') != NULL) {
+            char exists_path[MAX_FILENAME * 2 - 2];
+            // C'est un répertoire relatif au répertoire courant
+            snprintf(exists_path, sizeof(exists_path), "%s/%s", fs->current_directory, nomrepertoire);
             // C'est un chemin complet
-            if (!directory_exists(fs, nomrepertoire)) {
+            if (!directory_exists(fs, exists_path)) {
                 printf("Le répertoire '%s' n'existe pas.\n", nomrepertoire);
                 return 0;
             }
-            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", nomrepertoire, filenamefinal);
+
+            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", exists_path, filenamefinal);
+        } else if (strcmp(nomrepertoire, "..") == 0) {
+            snprintf(full_path_dest, sizeof(full_path_dest), "%s/%s", retirer_suffixe(fs->current_directory), filenamefinal); // Chemin relatif au répertoire parent
         } else {
             // C'est un répertoire relatif au répertoire courant
             snprintf(dest_directory, sizeof(dest_directory), "%s/%s", fs->current_directory, nomrepertoire);
@@ -1460,6 +1469,7 @@ int copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamefi
     Inode *dest_inode = &fs->inodes[fs->inode_count];
     strcpy(dest_inode->name, full_path_dest);
     dest_inode->is_directory = 0;
+    dest_inode->is_file = 1;
     dest_inode->size = source_inode->size;
     dest_inode->creation_time = time(NULL);
     dest_inode->modification_time = time(NULL);
@@ -1487,6 +1497,7 @@ int copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamefi
     // Sauvegarder le système de fichiers
     save_filesystem(fs);
     printf("Fichier '%s' copié vers '%s'.\n", filenamedepart, full_path_dest);
+    strncpy(fs->current_directory, prevent_path, MAX_FILENAME);
     return 1;
 }
 
@@ -1595,6 +1606,17 @@ char* last_element(const char* full_path) {
     return (dernier !=NULL)? dernier +1 :  (char*)full_path;
 }
 
+// Fonction pour retirer le suffixe d'une chaîne de caractères
+char *retirer_suffixe(char *str) {
+    // Recherche du dernier '/' dans la chaîne
+    char *pos = strrchr(str, '/');
+    if (pos != NULL) {
+        // On termine la chaîne à la position du '/' pour supprimer le suffixe
+        *pos = '\0';
+    }
+    return str;
+}
+
 // Fonction pour copier un répertoire et son contenu
 int copy_repertoire(Filesystem *fs, const char *source_dir, const char *dest_name, const char *dest_parent) {
     char full_source_path[MAX_FILENAME * 2];
@@ -1603,19 +1625,21 @@ int copy_repertoire(Filesystem *fs, const char *source_dir, const char *dest_nam
 
     // Construire les chemins complets
     if (source_dir[0] == '/') {
-        snprintf(full_source_path, sizeof(full_source_path), "%s", source_dir);
+        snprintf(full_source_path, sizeof(full_source_path), "%s", source_dir); // Chemin absolu
     } else {
-        snprintf(full_source_path, sizeof(full_source_path), "%s/%s", fs->current_directory, source_dir);
+        snprintf(full_source_path, sizeof(full_source_path), "%s/%s", fs->current_directory, source_dir); // Chemin relatif
     }
 
     if (dest_parent != NULL) {
         if (dest_parent[0] == '/') {
-            snprintf(full_dest_path, sizeof(full_dest_path), "%s/%s", dest_parent, dest_name);
+            snprintf(full_dest_path, sizeof(full_dest_path), "%s/%s", dest_parent, dest_name); // Chemin absolu
+        } else if (strcmp(dest_parent, "..") == 0) {
+            snprintf(full_dest_path, sizeof(full_dest_path), "%s/%s", retirer_suffixe(fs->current_directory), dest_name); // Chemin relatif au répertoire parent
         } else {
-            snprintf(full_dest_path, sizeof(full_dest_path), "%s/%s/%s", fs->current_directory, dest_parent, dest_name);
+            snprintf(full_dest_path, sizeof(full_dest_path), "%s/%s/%s", fs->current_directory, dest_parent, dest_name); // Chemin relatif au sous répertoire courant
         }
     } else {
-        snprintf(full_dest_path, sizeof(full_dest_path), "%s/%s", fs->current_directory, dest_name);
+        snprintf(full_dest_path, sizeof(full_dest_path), "%s/%s", fs->current_directory, dest_name); // Chemin relatif au répertoire courant
     }
 
     // Vérifier si le répertoire source existe
