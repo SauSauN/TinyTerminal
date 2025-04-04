@@ -2673,11 +2673,29 @@ int  read_trace_by_user(Filesystem *fs, const char *current_own) {
 
     // Vérifier si l'utilisateur est un superadmin
     int is_superadmin = is_user_superadmin(fs, current_own);
+    int show_all = 0;
+
+    // Si l'utilisateur est un superadmin, on lui demande son choix
+    if (is_superadmin) {
+        char choix;
+        printf("Voulez-vous afficher toutes les lignes ? [O/N] : ");
+        scanf(" %c", &choix);
+        // On vide le buffer d'entrée pour éviter d'éventuels problèmes
+        while(getchar() != '\n');
+        if (choix == 'O' || choix == 'o') {
+            show_all = 1;
+        } else if (choix == 'N' || choix == 'n') {
+            show_all = 0;
+        } else {
+            printf("Choix invalide. Vous devez entrer 'O' ou 'N'.\n");
+            fclose(trace_file);
+        }
+    }
 
     // Lire chaque ligne du fichier
     while (fgets(line, sizeof(line), trace_file)) {
         // Si l'utilisateur est un superadmin, afficher toutes les lignes
-        if (is_superadmin) {
+        if (is_superadmin && show_all) {
             printf("%s", line);
         } else {
             // Si l'utilisateur n'est pas un superadmin, vérifier s'il correspond à la ligne
