@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <locale.h> // Pour setlocale (gestion des caractères spéciaux)
+#include <sys/types.h> // Pour ino_t et autres types POSIX
 #include <time.h>   // Pour la gestion du temps (création/modification des fichiers)
 //#include <pthread.h> // Pour les threads
 
@@ -11,7 +12,7 @@
 #define MAX_DIRECTORY 50                    // Taille maximale du nom de répertoire
 #define FILESYSTEM_FILE "my_filesystem.dat" // Nom du fichier contenant le système de fichiers
 #define TRACE_FILE "trace_execution.txt"    // Nom du fichier contenant les traces d'exécution
-#define NAME_SIZE 10                        // Taille du nom
+#define NAME_SIZE 10                        // Taille du nom d'utilisateur
 #define PERM_SIZE 11                        // Taille des permissions
 #define BLOCK_SIZE 512                      // Taille d'un bloc de données
 #define NUM_BLOCKS 1024                     // Nombre total de blocs
@@ -46,6 +47,7 @@ typedef struct {
 
 // Structure représentant un inode (métadonnées d'un fichier ou répertoire)
 typedef struct {
+    ino_t inode_number;               // Numéro d'inode unique
     char name[MAX_FILENAME];          // Nom du fichier ou du répertoire
     int is_directory;                 // Indicateur si c'est un répertoire (1) ou un fichier (0)
     int is_link;                      // Indicateur si c'est un lien (1) ou non (0)
@@ -76,6 +78,7 @@ typedef struct {
 
 // Structure représentant le superbloc (métadonnées du système de fichiers)
 typedef struct {
+    ino_t next_inode_number;  // Prochain numéro disponible
     int num_blocks;               // Nombre total de blocs
     int num_inodes;               // Nombre total d'inodes
     int free_blocks[NUM_BLOCKS];  // Tableau des blocs libres (1 = libre, 0 = occupé)
@@ -352,6 +355,7 @@ int leave_group(Filesystem *fs, const char *groupname) {
 
 // Fonction pour initialiser le superbloc
 void init_superblock() {
+    sb.next_inode_number = 1;  // Commence à 1 (0 peut être réservé)
     sb.num_blocks = NUM_BLOCKS;
     sb.num_inodes = NUM_INODES;
     for (int i = 0; i < NUM_BLOCKS; i++) {
@@ -500,6 +504,7 @@ int create_directory_home(Filesystem *fs, const char *dirname, const char *destn
     fs->inodes[fs->inode_count].is_file = 0;
     fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].size = 0;
+    fs->inodes[fs->inode_count].inode_number = sb.next_inode_number++;
 
     // Initialisation des métadonnées
     time_t now = time(NULL); // Récupère l'heure actuelle
@@ -608,6 +613,7 @@ int create_directory(Filesystem *fs, const char *dirname, const char *destname) 
     fs->inodes[fs->inode_count].is_file = 0;
     fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].size = 0;
+    fs->inodes[fs->inode_count].inode_number = sb.next_inode_number++;
 
     // Initialisation des métadonnées
     time_t now = time(NULL); // Récupère l'heure actuelle
@@ -663,6 +669,7 @@ int create_directory_group(Filesystem *fs, const char *dirname) {
     fs->inodes[fs->inode_count].is_file = 0;
     fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].size = 0;
+    fs->inodes[fs->inode_count].inode_number = sb.next_inode_number++;
 
     // Initialisation des métadonnées
     time_t now = time(NULL); // Récupère l'heure actuelle
@@ -950,6 +957,7 @@ int create_file(Filesystem *fs, const char *filename, size_t size, const char *o
     fs->inodes[fs->inode_count].is_group = 0;
     fs->inodes[fs->inode_count].is_file = 1;
     fs->inodes[fs->inode_count].is_link = 0;
+    fs->inodes[fs->inode_count].inode_number = sb.next_inode_number++;
 
     // Initialisation des métadonnées
     time_t now = time(NULL); // Récupère l'heure actuelle
@@ -1005,7 +1013,11 @@ int list_directory(Filesystem *fs) {
             if (strlen(remaining_path) > 0 && strchr(remaining_path, '/') == NULL) {
                 if (fs->inodes[i].is_directory) {
                     printf("[DIR]  %s/\n", remaining_path);
-                } else {
+                } 
+                if (fs->inodes[i].is_link) {
+                    printf("[LINK]  %s\n", remaining_path);
+                } 
+                if (fs->inodes[i].is_file) {
                     printf("[FILE] %s (%d octets)\n", remaining_path, fs->inodes[i].size);
                 }
                 found = 1;
@@ -1471,6 +1483,7 @@ int copy_file(Filesystem *fs, const char *filenamedepart, const char *filenamefi
     dest_inode->is_directory = 0;
     dest_inode->is_file = 1;
     dest_inode->size = source_inode->size;
+    dest_inode->inode_number = sb.next_inode_number++;
     dest_inode->creation_time = time(NULL);
     dest_inode->modification_time = time(NULL);
     strncpy(dest_inode->owner, source_inode->owner, MAX_FILENAME);
@@ -1941,9 +1954,9 @@ int list_all_directory(Filesystem *fs) {
             strftime(modification_time, sizeof(modification_time), "%Y-%m-%d %H:%M:%S", localtime(&fs->inodes[i].modification_time));
             if (fs->inodes[i].is_directory) {
                 fs->inodes[i].size = calculate_directory_size_recursive(fs,fs->inodes[i].name); 
-                printf("%s %i %s  %s  %d  %s  %s  \n", fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, last_element(fs->inodes[i].name));
+                printf("%s  %i  %s  %s  %d  %s  %lu  %s  \n", fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, (unsigned long)fs->inodes[i].inode_number,  last_element(fs->inodes[i].name));
             } else {
-                printf("%s %i %s  %s  %d  %s  %s  \n",fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, last_element(fs->inodes[i].name));
+                printf("%s  %i  %s  %s  %d  %s  %lu  %s  \n",fs->inodes[i].permissions, fs->inodes[fs->inode_count].num_liens, fs->inodes[i].owner, fs->inodes[i].group, fs->inodes[i].size, modification_time, (unsigned long)fs->inodes[i].inode_number, last_element(fs->inodes[i].name));
             }
             found = 1;
             // Compter les fichiers et répertoires
@@ -2885,7 +2898,196 @@ char* get_hardlink_original(Filesystem *fs, const char *hard_link) {
 //=============================================================================
 //=============================================================================
 
-// Fonction pour créer un lien matériel
+// Fonction pour créer un lien symbolique
+int create_symbolic_link(Filesystem *fs, const char *file_name, const char *link_name) {
+    // Vérifier si on a atteint le nombre maximal de fichiers
+    if (fs->inode_count >= MAX_FILES) {
+        printf("Nombre maximum de fichiers atteint !\n");
+        return 0;
+    }
+
+    // Construire les chemins complets
+    char full_file_path[MAX_FILENAME * 2];
+    char full_link_path[MAX_FILENAME * 2];
+    
+    // Si le nom de fichier est un chemin absolu (commence par '/')
+    if (file_name[0] == '/') {
+        strncpy(full_file_path, file_name, sizeof(full_file_path));
+    } else {
+        snprintf(full_file_path, sizeof(full_file_path), "%s/%s", fs->current_directory, file_name);
+    }
+    
+    // Chemin pour le lien symbolique
+    snprintf(full_link_path, sizeof(full_link_path), "%s/%s", fs->current_directory, link_name);
+
+    // Vérifier si le fichier source existe
+    Inode *source_inode = NULL;
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, full_file_path) == 0) {
+            source_inode = &fs->inodes[i];
+            break;
+        }
+    }
+
+    if (source_inode == NULL) {
+        printf("Erreur : le fichier source '%s' n'existe pas.\n", full_file_path);
+        return 0;
+    }
+
+    // Vérifier si le lien symbolique existe déjà
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, full_link_path) == 0) {
+            printf("Erreur : un fichier ou lien existe déjà avec le nom '%s'.\n", link_name);
+            return 0;
+        }
+    }
+
+    // Vérifier les permissions sur le fichier source
+    if (strcmp(source_inode->owner, current_own) != 0 && 
+        strcmp(source_inode->group, current_group) != 0 && 
+        source_inode->permissions[7] != 'r') {  // Permission 'others read'
+        printf("Erreur : permissions insuffisantes sur le fichier source '%s'.\n", file_name);
+        return 0;
+    }
+
+    // Créer le nouvel inode pour le lien symbolique
+    Inode *link_inode = &fs->inodes[fs->inode_count];
+    
+    strcpy(link_inode->name, full_link_path);
+    link_inode->is_directory = 0;
+    link_inode->is_file = 0;
+    link_inode->is_link = 1;
+    link_inode->size = source_inode->size; // Taille du fichier source
+    link_inode->block_count = source_inode->block_count; // Nombre de blocs du fichier source
+    link_inode->inode_number = source_inode->inode_number; // Numéro d'inode du fichier source
+    
+    // Métadonnées
+    time_t now = time(NULL);
+    link_inode->creation_time = now;
+    link_inode->modification_time = now;
+    link_inode->num_liens = 0; // Initialiser le nombre de liens à 0
+
+    
+    strncpy(link_inode->owner, source_inode->owner, NAME_SIZE);
+    strncpy(link_inode->group, source_inode->group, GROUP_SIZE);
+    strcpy(link_inode->permissions, "lrwx------"); // Permissions par défaut pour les liens
+    
+    // Initialiser les liens
+    for (int i = 0; i < NUM_LIEN_MAX; i++) {
+        memset(link_inode->lien.hardLink[i].data, 0, MAX_FILENAME);
+        memset(link_inode->lien.symbolicLink[i].data, 0, MAX_FILENAME);
+    }
+
+    // Ajouter le lien symbolique au fichier source
+    int added = 0;
+    for (int i = 0; i < NUM_LIEN_MAX && !added; i++) {
+        if (strlen(source_inode->lien.symbolicLink[i].data) == 0) {
+            strncpy(source_inode->lien.symbolicLink[i].data, full_link_path, MAX_FILENAME);
+            added = 1;
+            source_inode->num_liens++;
+        }
+    }
+
+    if (!added) {
+        printf("Erreur : nombre maximum de liens symboliques atteint pour ce fichier.\n");
+        return 0;
+    }
+
+    fs->inode_count++;
+    source_inode->num_liens++; // Incrémenter le nombre de blocs du fichier source
+    save_filesystem(fs);
+    
+    printf("Lien symbolique '%s' créé vers '%s'.\n", full_link_path, full_file_path);
+    return 1;
+}
+
+//Fonction pour lire un lien symbolique
+int read_symbolic_link(Filesystem *fs, const char *link_name) {
+    // Vérifier si le lien symbolique existe
+    Inode *link_inode = get_inode_by_name(fs, link_name);
+    if (link_inode == NULL || !link_inode->is_link) {
+        printf("Erreur : Lien symbolique '%s' introuvable.\n", link_name);
+        return 0;
+    }
+    int inode_index = link_inode->inode_number;
+    // Vérifier si le lien symbolique pointe vers un fichier
+    if (link_inode->is_link) {
+        // Parcourir tous les inodes pour trouver le fichier pointé par le lien
+        for (int i = 0; i < fs->inode_count; i++) {
+            if (fs->inodes[i].inode_number == inode_index) {
+                read_file(fs,last_element(fs->inodes[i].name)); // Appeler la fonction de lecture de fichier
+                return 1;
+            } else {
+                printf("Erreur : Le lien symbolique '%s' ne pointe pas vers un fichier valide.\n", link_name);
+                return 0;
+            }
+
+        }
+    } else {
+        printf("Erreur : '%s' n'est pas un lien symbolique.\n", link_name);
+        return 0;
+    }
+    return 0; // Si aucune des conditions n'est remplie, retourner 0
+}
+
+// Fonction pour supprimer un lien symbolique
+int delete_symbolic_link(Filesystem *fs, const char *link_name) {
+    // Vérifier si le lien symbolique existe
+    Inode *link_inode = get_inode_by_name(fs, link_name);
+    if (link_inode == NULL || !link_inode->is_link) {
+        printf("Erreur : Lien symbolique '%s' introuvable.\n", link_name);
+        return 0;
+    }
+
+    // Supprimer le lien symbolique de l'inode source
+    for (int i = 0; i < fs->inode_count; i++) {
+        if (strcmp(fs->inodes[i].name, link_inode->name) == 0) {
+            for (int j = 0; j < NUM_LIEN_MAX; j++) {
+                if (strcmp(fs->inodes[i].lien.symbolicLink[j].data, link_name) == 0) {
+                    memset(fs->inodes[i].lien.symbolicLink[j].data, 0, MAX_FILENAME);
+                    fs->inodes[i].num_liens--;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+
+    // Supprimer l'inode du lien symbolique
+    memset(link_inode, 0, sizeof(Inode)); // Réinitialiser l'inode du lien symbolique
+    fs->inode_count--;
+
+    save_filesystem(fs);
+    printf("Lien symbolique '%s' supprimé.\n", link_name);
+    return 1;
+}
+
+// Fonction pour écrire dépuis un lien symbolique
+int write_symbolic_link(Filesystem *fs, const char *link_name, const char *data) {
+    // Vérifier si le lien symbolique existe
+    Inode *link_inode = get_inode_by_name(fs, link_name);
+    if (link_inode == NULL || !link_inode->is_link) {
+        printf("Erreur : Lien symbolique '%s' introuvable.\n", link_name);
+        return 0;
+    }
+
+    // Vérifier si le lien symbolique pointe vers un fichier
+    if (link_inode->is_link) {
+        // Parcourir tous les inodes pour trouver le fichier pointé par le lien
+        for (int i = 0; i < fs->inode_count; i++) {
+            if (fs->inodes[i].inode_number == link_inode->inode_number) {
+                write_to_file(fs, fs->inodes[i].name, data); // Appeler la fonction d'écriture de fichier
+                return 1;
+            }
+        }
+    } else {
+        printf("Erreur : '%s' n'est pas un lien symbolique.\n", link_name);
+        return 0;
+    }
+    return 0; // Si aucune des conditions n'est remplie, retourner 0
+}
+
+// Fonction pour créer un lien matériel*****************************************************************
 int create_hard_link(Filesystem *fs, const char *existing_file, const char *new_link) {
     char full_path_source[MAX_FILENAME * 2];
     char full_path_dest[MAX_FILENAME * 2];
@@ -3014,7 +3216,6 @@ void help() {
     printf("  write <nom> <cont>..........................Écrit dans un fichier\n");
     printf("  cat <nom>...................................Affiche le contenu d'un fichier\n");
     printf("  rm <nom>....................................Supprime un fichier\n");
-    printf("  lnm <src> <dest>............................rée un lien matériel\n");
     printf("  cp <src> <dest> [répertoire]................Copie un fichier\n");
     printf("    cp <src> <dest>---------------------------Copie un fichier dans un répertoire actuel\n");
     printf("    cp <src> <dest> .. -----------------------Copie un fichier dans un répertoire parent\n");
@@ -3024,6 +3225,19 @@ void help() {
     printf("    mv <src> .. ------------------------------Déplace un fichier dans le répertoire parent\n");
     printf("    mv <src> rep------------------------------Déplace un fichier dans le répertoire 'rep'\n");
     printf("    mv <src> rep/sousrep/etc------------------Chemin relatif\n\n");
+
+    printf("Gestion des liens :\n");
+    printf("  lns <cible> <lien>..........................crée un lien symbolic\n");
+    printf("  writes <lien> <cont>.........................Écrit dans un lien symbolique\n");
+    printf("  reads <lien>.................................Lit un lien symbolique\n");
+    printf("  rms <lien>...................................Supprime un lien symbolique\n");
+    printf("  lssymlinks <fic>............................Liste les liens symboliques pointant vers le fichier\n\n");
+
+    printf("  lnh <src> <dest>............................rée un lien matériel\n");
+    printf("  writeh <lien> <cont>.........................Écrit dans un lien matériel\n");
+    printf("  readh <lien>.................................Lit un lien matériel\n");
+    printf("  rmh <lien>...................................Supprime un lien matériel\n");
+    printf("  lshardlinks <fic>...........................Liste les liens matériels pointant vers le fichier\n\n");
 
     printf("Permissions :\n");
     printf("  chmodf <fichier> <cible> <perm>.............Modifie permissions fichier\n");
@@ -3393,6 +3607,24 @@ void shell(Filesystem *fs, char *current_own) {
             } else {
                 success = 'n'; // Si la création du répertoire échoue
             }
+        }  else if (strncmp(command, "lns", 3) == 0) {
+            char target_path[MAX_FILENAME];
+            char link_name[MAX_FILENAME];
+            sscanf(command + 4, "%s %s", link_name, target_path);
+            if (create_symbolic_link(fs, link_name, target_path)) {
+                success = 'o'; // Si la création du répertoire réussit
+            } else {
+                success = 'n'; // Si la création du répertoire échoue
+            }
+        }  else if (strncmp(command, "writes", 6) == 0) {
+            char linkname[MAX_FILENAME];
+            char content[MAX_CONTENT * 2];
+            sscanf(command + 7, "%s %[^\n]", linkname, content);
+            if (write_symbolic_link(fs, linkname, content)) {
+                success = 'o'; // Si l'écriture dans le fichier réussit
+            } else {
+                success = 'n'; // Si l'écriture dans le fichier échoue
+            }
         } else if (strncmp(command, "touch", 5) == 0) {
             char filename[MAX_FILENAME];
             int size = FILE_SIZE; // Taille par défaut
@@ -3448,6 +3680,18 @@ void shell(Filesystem *fs, char *current_own) {
                 success = 'o'; // Si la lecture du fichier réussit
             } else {
                 success = 'n'; // Si la lecture du fichier échoue
+            }
+        }  else if (strncmp(command, "reads", 5) == 0) {
+            if (read_symbolic_link(fs, command + 6)) {
+                success = 'o'; // Si la lecture du fichier réussit
+            } else {
+                success = 'n'; // Si la lecture du fichier échoue
+            }
+        }  else if (strncmp(command, "rms", 3) == 0) {
+            if (delete_symbolic_link(fs, command + 4)) {
+                success = 'o'; // Si la suppression du fichier réussit
+            } else {
+                success = 'n'; // Si la suppression du fichier échoue
             }
         } else if (strncmp(command, "rm", 2) == 0) {
             if (delete_file(fs, command + 3)) {
