@@ -2446,6 +2446,60 @@ int list_group_members(Filesystem *fs, const char *groupname) {
     return 0; // Si aucune des conditions n'est remplie, retourner 0
 }
 
+// Fonction pour afficher les informations d'un utilisateur
+int show_user_info(Filesystem *fs,const char *utilisateur) {
+    if (utilisateur == NULL) {
+        printf("Erreur : utilisateur non trouvé.\n");
+        return 0;
+    }
+    // Vérifier si l'utilisateur actuel est root et que le mot de passe est correct
+    User_Group *utilisa_teur = NULL;
+    int is_root = -1;
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, utilisateur) == 0) {
+            utilisa_teur = &fs->group[i];
+            break;
+        }
+    }
+    for (int i = 0; i < NUM_USER; i++) {
+        if (strcmp(fs->group[i].user, current_own) == 0) {
+            is_root = 1;
+            break;
+        }else {
+            is_root = 0;
+        }
+    }
+    
+    if (utilisa_teur == NULL) {
+        printf("Erreur : utilisateur '%s' non trouvé.\n", utilisateur);
+        return 0;
+    }
+
+    if (is_root || utilisa_teur->user == current_own) {   
+        printf("----- Informations sur l'utilisateur -----\n");
+        printf("Nom d'utilisateur : %s\n", utilisa_teur->user);   
+        printf("Est root          : %s\n", utilisa_teur->is_root ? "Oui" : "Non");
+        printf("Est admin         : %s\n", utilisa_teur->is_admin ? "Oui" : "Non");
+        printf("Groupes associés  : ");
+        if (utilisa_teur->taille > 0) {
+            for (int i = 0; i < utilisa_teur->taille; i++) {
+                printf("%s ", utilisa_teur->group[i].data);
+            }
+            printf("\n");
+        } else {
+            printf("Aucun\n");
+        }
+    } 
+    if (strcmp(utilisa_teur->user, current_own)== 0) {
+        printf("Mot de passe      : %s\n", utilisa_teur->password);
+        printf("Mot de passe root : %s\n", utilisa_teur->root_pwd);
+    } else {
+        printf("------------------------------------------\n");
+    }
+    printf("------------------------------------------\n");
+    return 1;
+}
+
 // Fonction pour retirer un utilisateur d'un groupe
 int remove_user_from_group(Filesystem *fs, const char *username, const char *groupname) {
     // Vérifications de base
@@ -2997,6 +3051,9 @@ void help() {
     printf("  sudo addadmin <nom>.........................Ajoute un utilisateur en admin (superadmin)\n");
     printf("  sudo deladmin <nom>.........................Retire un utilisateur en admin (superadmin)\n\n");
 
+    printf("Commandes utilisateur (sudo) :\n");
+    printf("  sudo infuser <nom>.........................Affiche les informations de l'utilisateur (admin)\n\n");
+
     printf("Système :\n");
     printf("  free........................................Affiche les blocs libres\n\n");
 
@@ -3028,7 +3085,20 @@ void shell(Filesystem *fs, char *current_own) {
             } else {
                 success = 'n'; // Le mot de passe sudo est incorrect
             }
-        } else if (strncmp(command, "sudo trace", 10) == 0) {
+        } else if (strncmp(command, "sudo infuser", 12) == 0) {
+            if (verify_sudo_password(fs, current_own)) {
+                if (show_user_info(fs, command + 13)) {
+                    sudo = 0; // Réinitialiser le mode sudo
+                    success = 'o'; // Si la création du répertoire réussit
+                } else {
+                    printf("Erreur : Impossible d'afficher les informations de l'utilisateur.\n");
+                    success = 'n'; // Si la création du répertoire échoue
+                }
+            } else {
+                success = 'n'; // Le mot de passe sudo est incorrect
+            }
+        }
+        else if (strncmp(command, "sudo trace", 10) == 0) {
             if (verify_sudo_password(fs, current_own)) {
                 if (read_trace_by_user(fs, current_own)) {
                     sudo = 0; // Réinitialiser le mode sudo
@@ -3593,10 +3663,34 @@ void init_main(Filesystem *fs) {
             exit(1); // Quitter si aucun emplacement libre n'est trouvé
         }
     } else {
-        printf("Utilisateur '%s' trouvé.\n", current_own);
-        good = 1;   
-        user_count = 2; // Réinitialiser le compteur d'utilisateurs   
-        success = 'o'; // Si la création du répertoire réussit  
+        // Demander un mot de passe simple (visible à l'écran)
+        char password[MAX_PASSWORD];
+        printf("Entrez votre mot de passe pour votre compte : ");
+        fgets(password, MAX_PASSWORD, stdin);
+        password[strcspn(password, "\n")] = '\0'; // Supprimer le saut de ligne
+        
+        // Vérification minimale
+        if (strlen(password) == 0) {
+            printf("Erreur : le mot de passe ne peut pas être vide.\n");
+            exit(1);
+        }
+        for (int i = 0; i < NUM_USER; i++) {
+            if (strcmp(fs->group[i].user, current_own) == 0) {
+                if (strcmp(fs->group[i].password, password) != 0) {
+                    printf("Erreur : mot de passe incorrect.\n");
+                    exit(1); // Quitter si le mot de passe est incorrect
+                }
+                else {
+        
+                    printf("Utilisateur '%s' trouvé.\n", current_own);
+                    good = 1;   
+                    user_count = 2; // Réinitialiser le compteur d'utilisateurs   
+                    success = 'o'; // Si la création du répertoire réussit  
+                    break; // Sortir de la boucle une fois l'utilisateur trouvé
+                
+                }
+            }
+        }
     }
 
     if (good) {
