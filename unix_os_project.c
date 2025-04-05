@@ -48,6 +48,7 @@ typedef struct {
 // Structure représentant un inode (métadonnées d'un fichier ou répertoire)
 typedef struct {
     ino_t inode_number;               // Numéro d'inode unique
+    ino_t parent_inode_number;        // Numéro d'inode parent (pour les répertoires)
     char name[MAX_FILENAME];          // Nom du fichier ou du répertoire
     int is_directory;                 // Indicateur si c'est un répertoire (1) ou un fichier (0)
     int is_link;                      // Indicateur si c'est un lien (1) ou non (0)
@@ -958,6 +959,7 @@ int create_file(Filesystem *fs, const char *filename, size_t size, const char *o
     fs->inodes[fs->inode_count].is_file = 1;
     fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].inode_number = sb.next_inode_number++;
+    fs->inodes[fs->inode_count].parent_inode_number = fs->inodes[fs->inode_count].inode_number; // Parent inode number
 
     // Initialisation des métadonnées
     time_t now = time(NULL); // Récupère l'heure actuelle
@@ -3004,6 +3006,7 @@ int create_symbolic_link(Filesystem *fs, const char *file_name, const char *link
     link_inode->size = source_inode->size; // Taille du fichier source
     link_inode->block_count = source_inode->block_count; // Nombre de blocs du fichier source
     link_inode->inode_number = source_inode->inode_number; // Numéro d'inode du fichier source
+    link_inode->parent_inode_number = link_inode->inode_number; // Numéro d'inode du parent
     
     // Métadonnées
     time_t now = time(NULL);
