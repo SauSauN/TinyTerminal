@@ -615,6 +615,7 @@ int create_directory(Filesystem *fs, const char *dirname, const char *destname) 
     fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].size = 0;
     fs->inodes[fs->inode_count].inode_number = sb.next_inode_number++;
+    fs->inodes[fs->inode_count].parent_inode_number = fs->inodes[fs->inode_count].inode_number;
 
     // Initialisation des métadonnées
     time_t now = time(NULL); // Récupère l'heure actuelle
@@ -671,6 +672,7 @@ int create_directory_group(Filesystem *fs, const char *dirname) {
     fs->inodes[fs->inode_count].is_link = 0;
     fs->inodes[fs->inode_count].size = 0;
     fs->inodes[fs->inode_count].inode_number = sb.next_inode_number++;
+    fs->inodes[fs->inode_count].parent_inode_number = fs->inodes[fs->inode_count].inode_number;
 
     // Initialisation des métadonnées
     time_t now = time(NULL); // Récupère l'heure actuelle
@@ -1014,10 +1016,10 @@ int list_directory(Filesystem *fs) {
             // If there are no more slashes, it's directly in this directory
             if (strlen(remaining_path) > 0 && strchr(remaining_path, '/') == NULL) {
                 if (fs->inodes[i].is_directory) {
-                    printf("[DIR]  %s/\n", remaining_path);
+                    printf("[DIRC] %s/\n", remaining_path);
                 } 
                 if (fs->inodes[i].is_link) {
-                    printf("[LINK]  %s\n", remaining_path);
+                    printf("[LINK] %s\n", remaining_path);
                 } 
                 if (fs->inodes[i].is_file) {
                     printf("[FILE] %s (%d octets)\n", remaining_path, fs->inodes[i].size);
@@ -1489,6 +1491,7 @@ int copy_file(Filesystem *fs, const char *file_name, const char *link_name, cons
     dest_inode->is_file = 1;
     dest_inode->size = source_inode->size;
     dest_inode->inode_number = sb.next_inode_number++;
+    dest_inode->parent_inode_number = dest_inode->inode_number; // Parent inode number
     dest_inode->creation_time = time(NULL);
     dest_inode->modification_time = time(NULL);
     strncpy(dest_inode->owner, source_inode->owner, MAX_FILENAME);
