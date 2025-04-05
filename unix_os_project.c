@@ -63,6 +63,7 @@ typedef struct {
     int block_indices[NUM_BLOCKS];    // Indices des blocs alloués
     int block_count;                  // Nombre de blocs alloués
     int num_liens;                    // Nombre de liens physiques
+    int num_hard_links;               // Nombre de liens physiques
     Lien lien;                        // Lien symbolique et physique
 } Inode;
 
@@ -423,15 +424,15 @@ int print_free_blocks() {
 
 // Fonction pour lister tous les liens symboliques pointant vers un fichier
 int list_symbolic_links(Filesystem *fs, const char *target_path) {
-    printf("Liens symboliques pointant vers '%s':\n", target_path);
     int found = 0;
+    int nombreLiens = 0;
 
     for (int i = 0; i < fs->inode_count; i++) {
-        for (int j = 0; j < NUM_LIEN_MAX; j++) {
-            if (strlen(fs->inodes[i].lien.symbolicLink[j].data) > 0 &&
-                strcmp(fs->inodes[i].lien.symbolicLink[j].data, target_path) == 0) {
-                printf("- %s\n", fs->inodes[i].name);
+        for (int j = 0; j < fs->inodes[i].num_liens-1; j++) {
+            if (fs->inodes[i].is_file && strcmp(fs->inodes[i].name, target_path ) == 0 && strlen(fs->inodes[i].lien.symbolicLink[j].data) > 0 ) {
+                printf("- %s\n", fs->inodes[i].lien.symbolicLink[j].data);
                 found = 1;
+                nombreLiens ++;
             }
         }
     }
@@ -440,38 +441,31 @@ int list_symbolic_links(Filesystem *fs, const char *target_path) {
         printf("Aucun lien symbolique trouvé.\n");
         return 0;
     }
+    printf("\nNombre de liens symboliques trouvés : %d\n", nombreLiens);
     return 1;
 }
 
 // Fonction pour lister tous les hardlinks d'un fichier
 int list_hard_links(Filesystem *fs, const char *target_path) {
-    // Trouver l'inode original
-    Inode *target_inode = NULL;
+    int found = 0;
+    int nombreLiens = 0;
+
     for (int i = 0; i < fs->inode_count; i++) {
-        if (strcmp(fs->inodes[i].name, target_path) == 0 && !fs->inodes[i].is_directory && fs->inodes[i].is_link) {
-            target_inode = &fs->inodes[i];
-            break;
+        for (int j = 0; j < fs->inodes[i].num_hard_links-1; j++) {
+            if (fs->inodes[i].is_file && strcmp(fs->inodes[i].name, target_path ) == 0 && strlen(fs->inodes[i].lien.hardLink[j].data) > 0 ) {
+                printf("- %s\n", fs->inodes[i].lien.hardLink[j].data);
+                found = 1;
+                nombreLiens ++;
+            }
         }
     }
 
-    if (target_inode == NULL) {
-        printf("Fichier cible '%s' introuvable.\n", target_path);
+    if (!found) {
+        printf("Aucun lien physique trouvé.\n");
         return 0;
     }
-
-    printf("Hardlinks du fichier '%s':\n", target_path);
-    printf("- %s (original)\n", target_path); // Le fichier original
-
-    // Parcourir tous les inodes pour trouver les hardlinks
-    for (int i = 0; i < fs->inode_count; i++) {
-        if (fs->inodes[i].block_count > 0 && 
-            fs->inodes[i].block_indices[0] == target_inode->block_indices[0] &&
-            strcmp(fs->inodes[i].name, target_path) != 0) {
-            printf("- %s\n", fs->inodes[i].name);
-            return 1; // Au moins un hardlink trouvé
-        }
-    }
-    return 0; // Aucun hardlink trouvé
+    printf("Nombre de liens physiques trouvés : %d\n", nombreLiens);
+    return 1;
 }
 
 // Fonction pour créer un répertoire
@@ -968,6 +962,7 @@ int create_file(Filesystem *fs, const char *filename, size_t size, const char *o
     fs->inodes[fs->inode_count].creation_time = now;
     fs->inodes[fs->inode_count].modification_time = now;
     fs->inodes[fs->inode_count].num_liens = 0;
+    fs->inodes[fs->inode_count].block_count = 0; // Initialiser le nombre de blocs à 0
     fs->inodes[fs->inode_count].is_directory = 0;
     fs->inodes[fs->inode_count].is_group = 0; 
     strncpy(fs->inodes[fs->inode_count].owner, owner, strlen(owner));
@@ -1489,6 +1484,10 @@ int copy_file(Filesystem *fs, const char *file_name, const char *link_name, cons
     strcpy(dest_inode->name, full_file_path);
     dest_inode->is_directory = 0;
     dest_inode->is_file = 1;
+    dest_inode->is_group = 0;
+    dest_inode->is_link = 0;
+    dest_inode->num_hard_links = 0;
+    dest_inode->num_liens = 0;
     dest_inode->size = source_inode->size;
     dest_inode->inode_number = sb.next_inode_number++;
     dest_inode->parent_inode_number = dest_inode->inode_number; // Parent inode number
@@ -2870,7 +2869,7 @@ char* get_symbolic_link_target(Filesystem *fs, const char *symb_link) {
                 // Vérifier tous les fichiers qui pourraient pointer vers ce lien
                 if (fs->inodes[j].is_file) {
                     for (int k = 0; k < NUM_LIEN_MAX; k++) {
-                        if (strcmp(fs->inodes[j].lien.symbolicLink[k].data, full_link_path) == 0) {
+                        if (strcmp(fs->inodes[j].lien.symbolicLink[k].data, symb_link) == 0) {
                             return fs->inodes[j].name; // Retourner le nom du fichier original
                         }
                     }
@@ -3032,7 +3031,7 @@ int create_symbolic_link(Filesystem *fs, const char *file_name, const char *link
     int added = 0;
     for (int i = 0; i < NUM_LIEN_MAX && !added; i++) {
         if (strlen(source_inode->lien.symbolicLink[i].data) == 0) {
-            strncpy(source_inode->lien.symbolicLink[i].data, full_link_path, MAX_FILENAME);
+            strncpy(source_inode->lien.symbolicLink[i].data, link_name, MAX_FILENAME);
             added = 1;
             source_inode->num_liens++;
         }
@@ -3068,12 +3067,20 @@ int read_symbolic_link(Filesystem *fs, const char *link_name) {
     }
 
     int inode_index = link_inode->inode_number;
+
+    char prevent_path[MAX_FILENAME * 2];
+    strncpy(prevent_path, fs->current_directory, MAX_FILENAME);
     // Vérifier si le lien symbolique pointe vers un fichier
     if (link_inode->is_link) {
         // Parcourir tous les inodes pour trouver le fichier pointé par le lien
         for (int i = 0; i < fs->inode_count; i++) {
             if (fs->inodes[i].is_file && fs->inodes[i].inode_number == inode_index) {
+                char temp_path[MAX_FILENAME * 2]; // Variable temporaire pour stocker le chemin
+                strncpy(temp_path, fs->inodes[i].name,MAX_FILENAME); // Copier le nom du fichier
+                strncpy(fs->current_directory, retirer_suffixe(temp_path),MAX_FILENAME);
                 read_file(fs,last_element(fs->inodes[i].name)); // Appeler la fonction de lecture de fichier
+                // Réinitialiser le chemin courant
+                strncpy(fs->current_directory, prevent_path, MAX_FILENAME);
                 return 1;
             }
         }
@@ -3342,11 +3349,11 @@ void help() {
     printf("    cpdir <src> <dest>------------------------Copie un répertoire dans le répertoire actuel\n");
     printf("    cpdir <src> <dest> .. --------------------Copie un répertoire dans le répertoire parent\n");
     printf("    cpdir <src> <dest> rep--------------------Copie un répertoire dans le répertoire 'rep'\n");
-    printf("    cpdir <src> <dest> rep/sousrep/etc--------Chemin relatif\n\n");
+    printf("    cpdir <src> <dest> rep/sousrep/etc--------Copie un répertoire dans les sous-répertoires\n\n");
     printf("  mvdir <src> <répertoire>....................Déplace un répertoire\n");
     printf("    mvdir <src> .. ---------------------------Déplace un répertoire dans le répertoire parent\n");
     printf("    mvdir <src> rep---------------------------Déplace un répertoire dans le répertoire 'rep'\n");
-    printf("    mvdir <src> rep/sousrep/etc---------------Chemin relatif\n\n");
+    printf("    mvdir <src> rep/sousrep/etc---------------Déplace un répertoire dans les sous-répertoires\n\n");
 
     printf("Gestion des fichiers :\n");
     printf("  touch <nom>.................................Crée un fichier vide\n");
@@ -3358,31 +3365,37 @@ void help() {
     printf("    cp <src> <dest>---------------------------Copie un fichier dans un répertoire actuel\n");
     printf("    cp <src> <dest> .. -----------------------Copie un fichier dans un répertoire parent\n");
     printf("    cp <src> <dest> rep-----------------------Copie un fichier dans un répertoire 'rep'\n");
-    printf("    cp <src> <dest> rep/sousrep/etc-----------Chemin relatif\n\n");
+    printf("    cp <src> <dest> rep/sousrep/etc-----------Déplace un fichier dans les sous-répertoires\n\n");
     printf("  mv <src> <répertoire>.......................Déplace/renomme un fichier\n");
     printf("    mv <src> .. ------------------------------Déplace un fichier dans le répertoire parent\n");
     printf("    mv <src> rep------------------------------Déplace un fichier dans le répertoire 'rep'\n");
-    printf("    mv <src> rep/sousrep/etc------------------Chemin relatif\n\n");
+    printf("    mv <src> rep/sousrep/etc------------------Déplace un fichier dans les sous-répertoires\n\n"); 
 
     printf("Gestion des liens :\n");
     printf("  lns <cible> <lien>..........................crée un lien symbolic\n");
     printf("  writes <lien> <cont>........................Écrit dans un lien symbolique\n");
     printf("  reads <lien>................................Lit un lien symbolique\n");
     printf("  rms <lien>..................................Supprime un lien symbolique\n");
+    printf("  lssymlinks <fic>............................Liste les liens symboliques pointant vers le fichier\n");
     printf("  mvs <lien> <rep>............................Déplace un lien symbolique\n");
-    printf("  lssymlinks <fic>............................Liste les liens symboliques pointant vers le fichier\n\n");
+    printf("    mv <lien> .. -----------------------------Déplace un lien symbolique dans le répertoire parent\n");
+    printf("    mv <lien> rep-----------------------------Déplace un lien symbolique dans le répertoire 'rep'\n");
+    printf("    mv <lien> rep/sousrep/etc-----------------Déplace un lien symbolique dans les sous-répertoires\n\n"); 
 
     printf("  lnh <src> <dest>............................rée un lien matériel\n");
     printf("  writeh <lien> <cont>........................Écrit dans un lien matériel\n");
     printf("  readh <lien>................................Lit un lien matériel\n");
-    printf("  rmh <lien>..................................Supprime un lien matériel\n");
-    printf("  lshardlinks <fic>...........................Liste les liens matériels pointant vers le fichier\n\n");
+    printf("  lshardlinks <fic>...........................Liste les liens matériels pointant vers le fichier\n");
+    printf("  mvh <lien> <rep>............................Déplace un lien matériel\n");
+    printf("    mv <lien> .. -----------------------------Déplace un lien matériel dans le répertoire parent\n");
+    printf("    mv <lien> rep-----------------------------Déplace un lien matériel dans le répertoire 'rep'\n");
+    printf("    mv <lien> rep/sousrep/etc-----------------Déplace un lien matériel dans les sous-répertoires\n\n"); 
 
     printf("Permissions :\n");
     printf("  chmodf <fichier> <cible> <perm>.............Modifie permissions fichier\n");
     printf("  chmodd <rep> <cible> <perm>.................Modifie permissions répertoire\n");
-    printf("  -----(cibles: -Owner, -Group, -Others)\n");
-    printf("  -----(perm: combinaison de rwx, ex: rw-)\n\n");
+    printf("  ---(cibles: -Owner, -Group, -Others)\n");
+    printf("  ---(perm: combinaison de rwx, ex: rw-)\n\n");
 
     printf("Gestion des groupes :\n");
     printf("  lsgroups....................................Liste les groupes de l'utilisateur\n");
