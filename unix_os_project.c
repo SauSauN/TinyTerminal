@@ -48,7 +48,7 @@ typedef struct {
 // Structure représentant un inode (métadonnées d'un fichier ou répertoire)
 typedef struct {
     ino_t inode_number;               // Numéro d'inode unique
-    ino_t parent_inode_number;        // Numéro d'inode parent (pour les répertoires)
+    ino_t parent_inode_number;        // Numéro d'inode parent 
     char name[MAX_FILENAME];          // Nom du fichier ou du répertoire
     int is_directory;                 // Indicateur si c'est un répertoire (1) ou un fichier (0)
     int is_link;                      // Indicateur si c'est un lien (1) ou non (0)
@@ -59,7 +59,7 @@ typedef struct {
     time_t creation_time;             // Date de création
     time_t modification_time;         // Date de la dernière modification
     char owner[MAX_FILENAME];         // Propriétaire du fichier
-    char permissions[PERM_SIZE];      // Permissions du fichier (ex: "-rwxr-xr--"),du reperdtoire (ex: "drwxr-xr--")
+    char permissions[PERM_SIZE];      // Permissions du fichier (ex: "-rwxr-xr--"),du reperdtoire (ex: "drwxr-xr--"), du lien (ex: "lrwxr-xr--")
     int block_indices[NUM_BLOCKS];    // Indices des blocs alloués
     int block_count;                  // Nombre de blocs alloués
     int num_liens;                    // Nombre de liens physiques
@@ -3232,6 +3232,49 @@ int move_symbolic_link(Filesystem *fs, const char *linkname, const char *rep_nam
     return 1;
 }
 
+// Fonction pour afficher les métadonnées d'un lien symbolique
+int show_symbolic_link_metadata(Filesystem *fs, const char *link_name) {
+    // Vérifier si le lien symbolique existe
+    Inode *link_inode = get_inode_by_name(fs, last_element(link_name));
+    if (link_inode == NULL || !link_inode->is_link) {
+        printf("Erreur : Lien symbolique '%s' introuvable.\n", link_name);
+        return 0;
+    }
+    char *file_name = get_symbolic_link_target(fs, last_element(link_name));
+    if (file_name == NULL) {
+        printf("Erreur : Fichier pointé par le lien symbolique introuvable.\n");
+        return 0;
+    }
+    
+    char creation_time[100]; // Buffer pour la date de création
+    char modification_time[100]; // Buffer pour la date de modification
+
+    // Formater les dates pour un affichage lisible
+    struct tm *creation_tm = localtime(&link_inode->creation_time); // Convertir le temps en structure tm
+    strftime(creation_time, sizeof(creation_time), "%Y-%m-%d %H:%M:%S", creation_tm); // Formater la date de création
+    struct tm *modification_tm = localtime(&link_inode->modification_time); // Convertir le temps en structure tm
+    strftime(modification_time, sizeof(modification_time), "%Y-%m-%d %H:%M:%S", modification_tm); // Formater la date de modification
+
+    printf("  Date de création: %s\n", creation_time);
+    printf("  Date de modification: %s\n", modification_time);
+
+    // Afficher les métadonnées du lien symbolique
+    printf("=== Métadonnées du lien symbolique ===\n");
+    printf("Nom : %s\n", link_inode->name);
+    printf("Taille : %d octets\n", link_inode->size);
+    printf("Fichier pointé : %s\n", last_element(file_name));
+    printf("Propriétaire : %s\n", link_inode->owner);
+    printf("Groupe : %s\n", link_inode->group);
+    printf("Permissions : %s\n", link_inode->permissions);
+    printf("Date de création : %s\n", creation_time);
+    printf("Date de modification: %s\n", modification_time);
+
+    return 1;
+}
+
+//=============================================================================
+//=============================================================================
+
 // Fonction pour créer un lien matériel*****************************************************************
 int create_hard_link(Filesystem *fs, const char *existing_file, const char *new_link) {
     char full_path_source[MAX_FILENAME * 2];
@@ -3325,6 +3368,44 @@ int create_hard_link(Filesystem *fs, const char *existing_file, const char *new_
     return 1;
 }
 
+// Fonction pour afficher les métadonnées d'un lien matériel
+int show_hard_link_metadata(Filesystem *fs, const char *link_name) {
+    // Vérifier si le lien matériel existe
+    Inode *link_inode = get_inode_by_name(fs, last_element(link_name));
+    if (link_inode == NULL || link_inode->is_link) {
+        printf("Erreur : Lien matériel '%s' introuvable ou n'est pas un lien matériel.\n", link_name);
+        return 0;
+    }
+
+    char *file_name = get_hardlink_original(fs, last_element(link_name));
+    if (file_name == NULL) {
+        printf("Erreur : Fichier pointé par le lien symbolique introuvable.\n");
+        return 0;
+    }
+    
+    char creation_time[100]; // Buffer pour la date de création
+    char modification_time[100]; // Buffer pour la date de modification
+
+    // Formater les dates pour un affichage lisible
+    struct tm *creation_tm = localtime(&link_inode->creation_time); // Convertir le temps en structure tm
+    strftime(creation_time, sizeof(creation_time), "%Y-%m-%d %H:%M:%S", creation_tm); // Formater la date de création
+    struct tm *modification_tm = localtime(&link_inode->modification_time); // Convertir le temps en structure tm
+    strftime(modification_time, sizeof(modification_time), "%Y-%m-%d %H:%M:%S", modification_tm); // Formater la date de modification
+
+    // Afficher les métadonnées du lien matériel
+    printf("=== Métadonnées du lien matériel ===\n");
+    printf("Nom : %s\n", link_inode->name);
+    printf("Taille : %d octets\n", link_inode->size);
+    printf("Fichier pointé : %s\n", last_element(file_name));
+    printf("Propriétaire : %s\n", link_inode->owner);
+    printf("Groupe : %s\n", link_inode->group);
+    printf("Permissions : %s\n", link_inode->permissions);
+    printf("Date de création : %s\n", creation_time);
+    printf("Date de modification: %s\n", modification_time);
+
+    return 1;
+}
+
 // Fonction pour afficher l'aide
 void help() {
     printf("\n=== Aide du système de fichiers ===\n\n");
@@ -3336,11 +3417,13 @@ void help() {
     printf("  pwd.........................................Affiche le répertoire courant\n\n");
 
     printf("Gestion des répertoires :\n");
-    printf("  mkdir <nom>.................................Crée un répertoire\n");
     printf("  rmdir <nom>.................................Supprime un répertoire\n");
     printf("  ls..........................................Liste le contenu du répertoire\n");
     printf("  lsl.........................................Liste avec métadonnées détaillées\n");
     printf("  statd <nom>.................................Affiche les métadonnées d'un répertoire\n");
+    printf("  mkdir <nom> [répertoire]....................Crée un répertoire\n");
+    printf("    mkdir <nom> rep---------------------------Crée un répertoire dans le répertoire 'rep'\n");
+    printf("    mkdir <nom> rep/sousrep/etc---------------Crée un répertoire dans les sous-répertoires\n");
     printf("  cd <nom>....................................Change de répertoire\n");
     printf("    cd .. ------------------------------------Remonte d'un niveau\n");
     printf("    cd rep------------------------------------Va dans le répertoire 'rep'\n");
@@ -3376,6 +3459,7 @@ void help() {
     printf("  writes <lien> <cont>........................Écrit dans un lien symbolique\n");
     printf("  reads <lien>................................Lit un lien symbolique\n");
     printf("  rms <lien>..................................Supprime un lien symbolique\n");
+    printf("  stats <lien>................................Affiche les métadonnées d'un lien symbolique\n");
     printf("  lssymlinks <fic>............................Liste les liens symboliques pointant vers le fichier\n");
     printf("  mvs <lien> <rep>............................Déplace un lien symbolique\n");
     printf("    mv <lien> .. -----------------------------Déplace un lien symbolique dans le répertoire parent\n");
@@ -3385,6 +3469,7 @@ void help() {
     printf("  lnh <src> <dest>............................rée un lien matériel\n");
     printf("  writeh <lien> <cont>........................Écrit dans un lien matériel\n");
     printf("  readh <lien>................................Lit un lien matériel\n");
+    printf("  stath <lien>.................................Affiche les métadonnées d'un lien matériel\n");
     printf("  lshardlinks <fic>...........................Liste les liens matériels pointant vers le fichier\n");
     printf("  mvh <lien> <rep>............................Déplace un lien matériel\n");
     printf("    mv <lien> .. -----------------------------Déplace un lien matériel dans le répertoire parent\n");
@@ -3629,6 +3714,19 @@ void shell(Filesystem *fs, char *current_own) {
                 }
             } else {
                 printf("Usage: lshardlinks <fichier_cible>\n");
+                success = 'n'; // Si la création du répertoire échoue
+            }
+        }  else if (strncmp(command, "stats", 5) == 0) {
+            if (strlen(command) > 6) {
+                char full_path[MAX_PATH+1];
+                snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, command + 6);
+                if (show_symbolic_link_metadata(fs, full_path)) {
+                    success = 'o'; // Si la création du répertoire réussit
+                } else {
+                    success = 'n'; // Si la création du répertoire réussit
+                }
+            } else {
+                printf("Usage: stats <lien_symbolique>\n");
                 success = 'n'; // Si la création du répertoire échoue
             }
         } else if (strncmp(command, "exit", 4) == 0) {
