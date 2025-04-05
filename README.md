@@ -1,204 +1,180 @@
-# Mini-Shell pour un Système de Fichiers
+# 📁 Système de Fichiers Virtuel — Shell Interactif
 
-## 1. Présentation du Sujet
-Le but du mini-projet est de réaliser un petit gestionnaire de fichiers. La « partition » du file system sera un fichier UNIX de taille suffisante pour y faire des essais probants, et les opérations de base (création, suppression, copie et déplacement de fichiers et/ou répertoires) devront être disponibles. En complément de ces dernières, une gestion des droits d’accès ainsi que la notion de lien seront également implantées.
-
-La gestion de l’espace libre (par exemple suite à la suppression de fichier(s)) est un aspect important du projet. Il est essentiel de s'assurer que la mémoire est efficacement allouée et libérée afin d'éviter la fragmentation et d'optimiser l'utilisation de l'espace disque.
-
-## 2. Fonctionnalités et Exemples d'Utilisation
-Le shell supporte les commandes suivantes :
-
-- `help` : Affiche l'aide des commandes disponibles.
-  ```sh
-  help
-  ```
-
-- `exit` : Quitte le shell.
-  ```sh
-  exit
-  ```
-
-- `pwd` : Affiche le répertoire courant.
-  ```sh
-  pwd
-  ```
-
-- `mkdir <nom>` : Crée un répertoire.
-  ```sh
-  mkdir mon_dossier
-  ```
-
-- `rmdir <nom>` : Supprime un répertoire.
-  ```sh
-  rmdir mon_dossier
-  ```
-
-- `cpdir <src> <dest> <rep>` : Copie un répertoire vers un répertoire cible.
-  ```sh
-  cpdir source_dossier destination_dossier rep1
-  ```
-
-- `cd <nom>` : Change de répertoire.
-  ```sh
-  cd mon_dossier
-  ```
-
-- `ls` : Liste le contenu du répertoire courant.
-  ```sh
-  ls
-  ```
-
-- `touch <nom> <taille>` : Crée un fichier vide de la taille spécifiée.
-  ```sh
-  touch mon_fichier.txt 1024
-  ```
-
-- `stat <nom>` : Affiche les métadonnées d'un fichier.
-  ```sh
-  stat mon_fichier.txt
-  ```
-
-- `chmod <nom> <cible> <perm>` : Modifie les permissions d'un fichier.
-  ```sh
-  chmod mon_fichier.txt owner rwx
-  ```
-
-- `write <nom> <contenu>` : Écrit du contenu dans un fichier.
-  ```sh
-  write mon_fichier.txt "Ceci est du texte."
-  ```
-
-- `cat <nom>` : Affiche le contenu d'un fichier.
-  ```sh
-  cat mon_fichier.txt
-  ```
-
-- `cp <src> <dest> <rep>` : Copie un fichier vers un répertoire cible.
-  ```sh
-  cp mon_fichier.txt copie_fichier.txt mon_dossier
-  ```
-- **Copier le contenu d'un fichier vers un autre :**
-  ```bash
-  -cp <fichier1> <fichier2>
-  ```
-  Exemple :
-  ```bash
-  -cp file1.txt file2.txt
-  ```
-
-- `mv <src> <rep>` : Déplace un fichier vers un répertoire cible.
-  ```sh
-  mv mon_fichier.txt mon_dossier
-  ```
-
-- `reset` : Réinitialise le système de fichiers.
-  ```sh
-  reset
-  ```
-
-## 3. Structure des inodes
-
-```c
-typedef struct {
-    char name[MAX_FILENAME];          // Nom du fichier ou du répertoire
-    int is_directory;                 // 1 = répertoire, 0 = fichier
-    int size;                         // Taille du fichier en octets
-    time_t creation_time;             // Date de création
-    time_t modification_time;         // Date de la dernière modification
-    char owner[MAX_FILENAME];         // Propriétaire du fichier
-    char permissions[10];             // Permissions du fichier (ex: "rwxr-xr--")
-    int block_indices[NUM_BLOCKS];    // Indices des blocs alloués
-    int block_count;                  // Nombre de blocs alloués
-} Inode;
-```
-
-### Explication :
-- **name** : Nom du fichier ou dossier.
-- **is_directory** : Indique si l’inode représente un fichier (0) ou un dossier (1).
-- **size** : Taille en octets du fichier.
-- **creation_time / modification_time** : Dates de création et de dernière modification.
-- **owner** : Nom du propriétaire du fichier.
-- **permissions** : Permissions sous forme de chaîne (ex : "rwxr-xr--").
-- **block_indices** : Tableau contenant les indices des blocs de données utilisés.
-- **block_count** : Nombre total de blocs utilisés.
+Bienvenue dans le système de fichiers virtuel ! Ce programme simule un shell UNIX simplifié permettant la gestion complète de fichiers, dossiers, permissions, liens, groupes, et utilisateurs, avec des privilèges sudo/admin/superadmin.
 
 ---
 
-## 4. Structure du superbloc
-
-```c
-typedef struct {
-    int num_blocks;               // Nombre total de blocs
-    int num_inodes;               // Nombre total d'inodes
-    int free_blocks[NUM_BLOCKS];  // Tableau des blocs libres (1 = libre, 0 = occupé)
-    int free_inodes[NUM_INODES];  // Tableau des inodes libres (1 = libre, 0 = occupé)
-    Inode inodes[NUM_INODES];     // Table des inodes
-} superblock;
-```
-
-### Explication :
-- **num_blocks** : Nombre total de blocs disponibles.
-- **num_inodes** : Nombre total d’inodes.
-- **free_blocks** : Tableau qui indique quels blocs sont libres.
-- **free_inodes** : Tableau qui indique quels inodes sont libres.
-- **inodes** : Table des inodes contenant les métadonnées des fichiers.
-
----
-
-## 5. Structure du système de fichiers
-
-```c
-typedef struct {
-    Inode inodes[MAX_FILES];      // Table des inodes
-    int inode_count;              // Nombre d'inodes utilisés
-    char current_directory[MAX_FILENAME]; // Répertoire actuel
-} Filesystem;
-```
-
-### Explication :
-- **inodes** : Tableau contenant les inodes du système de fichiers.
-- **inode_count** : Nombre total d’inodes actuellement utilisés.
-- **current_directory** : Stocke le chemin du répertoire courant.
-
----
-
-## 6. Structure d’entrée de fichier
-
-```c
-typedef struct {
-    char name[50];      // Nom du fichier
-    int inode_index;    // Index de l'inode associé
-} file_entry;
-```
-
-### Explication :
-- **name** : Nom du fichier associé.
-- **inode_index** : Index de l’inode correspondant.
-
-## 7. Compilation et Exécution
+## 📥 Guide d’installation
 
 ### Prérequis
-- Un compilateur C (GCC recommandé)
-- Un système compatible UNIX ou Windows avec un terminal
 
-### Compilation
-```sh
-gcc -o shell filesystem.c shell.c -Wall -Wextra
+- Un système UNIX/Linux
+- Un compilateur C (ex: `gcc`)
+- `make` installé
+
+### Installation
+
+```bash
+git clone <repo>
+cd <repo>
+make
 ```
 
 ### Exécution
-```sh
-./shell
+
+```bash
+./filesystem
 ```
 
-## 8. Utilisation
-Lorsque le programme démarre, il demande le nom de l'utilisateur, puis affiche le répertoire courant. Vous pouvez alors entrer les commandes listées ci-dessus.
+---
 
-## 9. Structure du Projet
-- `main.c` : Point d'entrée du programme
-- `shell.c` : Implémente la boucle du shell et le traitement des commandes
-- `filesystem.c` : Gère les opérations sur les fichiers et répertoires
-- `filesystem.h` : Déclarations des fonctions et structures du système de fichiers
+## 👤 Connexion Utilisateur
 
-## 6. Auteur
+- Lors du premier lancement, entrez un **nom d'utilisateur**.  
+- Si l'utilisateur existe déjà, il sera invité à entrer son **mot de passe**.  
+- Sinon, un compte sera **créé automatiquement**, avec mot de passe, répertoire personnel et rôle initial :
+  - Le **premier utilisateur** devient **superadmin**.
+  - Les suivants sont des utilisateurs simples.
 
+---
+
+## 📜 Commandes Disponibles
+
+### 🔧 Commandes de base
+
+- `help` — Affiche cette aide
+- Affiche une liste complète de toutes les commandes disponibles avec une description succincte de chacune.
+
+- `exit` — Quitte le shell
+- Ferme le programme et retourne à votre terminal initial.
+
+- `clear` — Efface l’écran
+- Nettoie l’affichage du terminal pour une meilleure lisibilité.
+  
+- `whoami` — Affiche l'utilisateur actuel
+- Indique le nom de l'utilisateur connecté en cours.
+  
+- `pwd` — Affiche le répertoire courant
+- Affiche le chemin absolu du répertoire dans lequel vous travaillez actuellement.
+
+### 📁 Gestion des répertoires
+
+- `rmdir <nom>` — Supprime un répertoire
+- Supprime un répertoire vide portant le nom spécifié.
+  
+- `ls` — Liste le contenu du répertoire
+- Affiche la liste des fichiers et des sous-répertoires présents dans le répertoire courant.
+  
+- `lsl` — Liste avec métadonnées détaillées
+- Similaire à ls, mais affiche également des informations supplémentaires (permissions, taille, date de modification).
+
+- `statd <nom>` — Affiche les métadonnées d'un répertoire
+- Fournit des détails comme les permissions, le propriétaire et d'autres attributs du répertoire spécifié.
+  
+- `mkdir <nom> [répertoire]` — Crée un répertoire
+  - `mkdir <nom> rep` — Crée un répertoire dans le répertoire 'rep'
+  - `mkdir <nom> rep/sousrep/etc` — Crée un répertoire dans les sous-répertoires
+- `cd <nom>` — Change de répertoire
+  - `cd ..` — Remonte d'un niveau
+  - `cd rep` — Va dans le répertoire 'rep'
+  - `cd rep/sousrep/etc` — Chemin relatif
+- `cpdir <src> <dest> [répertoire]` — Copie un répertoire
+  - `cpdir <src> <dest>` — Copie un répertoire dans le répertoire actuel
+  - `cpdir <src> <dest> ..` — Copie un répertoire dans le répertoire parent
+  - `cpdir <src> <dest> rep` — Copie un répertoire dans le répertoire 'rep'
+  - `cpdir <src> <dest> rep/sousrep/etc` — Copie un répertoire dans les sous-répertoires
+- `mvdir <src> <répertoire>` — Déplace un répertoire
+  - `mvdir <src> ..` — Déplace un répertoire dans le répertoire parent
+  - `mvdir <src> rep` — Déplace un répertoire dans le répertoire 'rep'
+  - `mvdir <src> rep/sousrep/etc` — Déplace un répertoire dans les sous-répertoires
+
+### 📄 Gestion des fichiers
+
+- `touch <nom>` — Crée un fichier vide
+- `statf <nom>` — Affiche les métadonnées d'un fichier
+- `write <nom> <cont>` — Écrit dans un fichier
+- `cat <nom>` — Affiche le contenu d'un fichier
+- `rm <nom>` — Supprime un fichier
+- `cp <src> <dest> [répertoire]` — Copie un fichier
+  - `cp <src> <dest>` — Copie un fichier dans un répertoire actuel
+  - `cp <src> <dest> ..` — Copie un fichier dans un répertoire parent
+  - `cp <src> <dest> rep` — Copie un fichier dans un répertoire 'rep'
+  - `cp <src> <dest> rep/sousrep/etc` — Déplace un fichier dans les sous-répertoires
+- `mv <src> <répertoire>` — Déplace/renomme un fichier
+  - `mv <src> ..` — Déplace un fichier dans le répertoire parent
+  - `mv <src> rep` — Déplace un fichier dans le répertoire 'rep'
+  - `mv <src> rep/sousrep/etc` — Déplace un fichier dans les sous-répertoires
+
+### 🔗 Gestion des liens
+
+Symboliques :
+
+- `lns <cible> <lien>` — Crée un lien symbolique
+- `writes <lien> <cont>` — Écrit dans un lien symbolique
+- `reads <lien>` — Lit un lien symbolique
+- `rms <lien>` — Supprime un lien symbolique
+- `stats <lien>` — Affiche les métadonnées d'un lien symbolique
+- `lssymlinks <fic>` — Liste les liens symboliques pointant vers le fichier
+- `mvs <lien> <rep>` — Déplace un lien symbolique
+  - `mv <lien> ..` — Déplace un lien symbolique dans le répertoire parent
+  - `mv <lien> rep` — Déplace un lien symbolique dans le répertoire 'rep'
+  - `mv <lien> rep/sousrep/etc` — Déplace un lien symbolique dans les sous-répertoires
+
+Matériels :
+
+- `lnh <src> <dest>` — Crée un lien matériel
+- `writeh <lien> <cont>` — Écrit dans un lien matériel
+- `readh <lien>` — Lit un lien matériel
+- `stath <lien>` — Affiche les métadonnées d'un lien matériel
+- `lshardlinks <fic>` — Liste les liens matériels pointant vers le fichier
+- `mvh <lien> <rep>` — Déplace un lien matériel
+  - `mv <lien> ..` — Déplace un lien matériel dans le répertoire parent
+  - `mv <lien> rep` — Déplace un lien matériel dans le répertoire 'rep'
+  - `mv <lien> rep/sousrep/etc` — Déplace un lien matériel dans les sous-répertoires
+
+### 🛡️ Permissions
+
+- `chmodf <fichier> <cible> <perm>` — Modifie permissions fichier
+- `chmodd <rep> <cible> <perm>` — Modifie permissions répertoire
+
+> Cibles : `-Owner`, `-Group`, `-Others`  
+> Perms : Combinaison de `rwx`, ex: `rw-`
+
+### 👥 Gestion des groupes
+
+- `lsgroups` — Liste les groupes de l'utilisateur
+- `chgroup <nom>` — Change le groupe actuel
+- `curgroup` — Affiche le groupe actuel
+- `crtgroup <nom>` — Crée un nouveau groupe
+- `leavegroup <nom>` — Quitter un groupe
+- `lsmembers <nom>` — Liste les membres d'un groupe
+- `sudo delgroup <nom>` — Supprime un groupe (admin)
+- `sudo add <nom> <pers>` — Ajoute un utilisateur au groupe (admin)
+- `sudo remove <pers> <nom>` — Retire un utilisateur du groupe (admin)
+
+### 🔐 Commandes administrateur (sudo)
+
+- `sudo passwd` — Affiche le mot de passe (admin)
+- `sudo chgpasswd` — Change le mot de passe (admin)
+- `sudo trace` — Affiche la trace d'exécution (admin)
+- `sudo deluser <nom>` — Supprime un compte utilisateur (admin)
+- `sudo resetuser <nom>` — Réinitialise un répertoire utilisateur (admin)
+
+- `sudo addadmin <nom>` — Ajoute un utilisateur en admin (superadmin)
+- `sudo deladmin <nom>` — Retire un utilisateur en admin (superadmin)
+
+### 👤 Commandes utilisateur (sudo)
+
+- `sudo infuser <nom>` — Affiche les informations de l'utilisateur (admin)
+
+### 🧱 Système
+
+- `free` — Affiche les blocs libres
+
+---
+
+## 📌 Remarques
+
+- Les commandes admin nécessitent le mot de passe sudo.
+- Tous les chemins sont relatifs au dossier courant.
+- Utilisez `help` à tout moment pour revoir ce manuel.
