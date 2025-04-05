@@ -642,6 +642,7 @@ int create_directory(Filesystem *fs, const char *dirname, const char *destname) 
 
 // Fonction pour créer un répertoire de groupe
 int create_directory_group(Filesystem *fs, const char *dirname) {
+    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     if (fs->inode_count >= MAX_FILES) {
         printf("Nombre maximum de fichiers atteint !\n");
         return 0;
@@ -1246,6 +1247,7 @@ int calculate_directory_size_recursive(Filesystem *fs, const char *dirpath) {
 
 // Fonction pour écrire du contenu dans un fichier
 int write_to_file(Filesystem *fs, const char *filename, const char *content) {
+    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path[MAX_FILENAME * 2];
     snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, filename);
     char perm = 'w';
@@ -1314,11 +1316,13 @@ int write_to_file(Filesystem *fs, const char *filename, const char *content) {
 
     // Si le fichier n'est pas trouvé
     printf("Fichier '%s' introuvable ou est un répertoire.\n", filename);
+    //pthread_mutex_unlock(&fs_mutex); // Déverrouiller le mutex
     return 0;
 }
 
 // Fonction pour lire le contenu d'un fichier ||||||||
 int read_file(Filesystem *fs, const char *filename) {
+    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path[MAX_FILENAME * 2];
     snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, filename);
     char perm = 'r';
@@ -1359,11 +1363,13 @@ int read_file(Filesystem *fs, const char *filename) {
 
     // Si le fichier n'est pas trouvé
     printf("Fichier '%s' introuvable ou est un répertoire.\n", filename);
+    //pthread_mutex_unlock(&fs_mutex); // Déverrouiller le mutex
     return 0;
 }
 
 // Fonction pour supprimer un fichier
 int delete_file(Filesystem *fs, const char *filename) {
+    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path[MAX_FILENAME * 2];
 
     if (strncmp(filename, "/home/", strlen("/home/")) == 0) {  
@@ -1398,6 +1404,7 @@ int delete_file(Filesystem *fs, const char *filename) {
 
     // Si le fichier n'est pas trouvé
     printf("Fichier '%s' introuvable ou est un répertoire.\n", filename);
+    //pthread_mutex_unlock(&fs_mutex); // Déverrouiller le mutex
     return 0;
 }
 
@@ -1413,6 +1420,7 @@ int directory_exists(Filesystem *fs, const char *path) {
 
 // Fonction pour copier un fichier
 int copy_file(Filesystem *fs, const char *file_name, const char *link_name, const char *rep_name) {
+    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path_source[MAX_FILENAME * 2];
     char full_file_path[MAX_FILENAME * 2];
     char dest_directory[MAX_FILENAME * 2];
@@ -1518,11 +1526,13 @@ int copy_file(Filesystem *fs, const char *file_name, const char *link_name, cons
     save_filesystem(fs);
     printf("Fichier '%s' copié vers '%s'.\n", file_name, full_file_path);
     strncpy(fs->current_directory, prevent_path, MAX_FILENAME);
+    //pthread_mutex_unlock(&fs_mutex); // Déverrouiller le mutex
     return 1;
 }
 
 // Fonction pour déplacer un fichier
 int move_file(Filesystem *fs, const char *filename, const char *rep_name) {
+    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path_source[MAX_FILENAME * 2];
     char full_file_path[MAX_FILENAME * 2];
     char dest_directory[MAX_FILENAME * 2];
@@ -1615,6 +1625,7 @@ int move_file(Filesystem *fs, const char *filename, const char *rep_name) {
     save_filesystem(fs);
     printf("Fichier '%s' déplacé vers '%s'.\n", filename, full_file_path);
     strncpy(fs->current_directory, prevent_path, MAX_FILENAME);
+    //pthread_mutex_unlock(&fs_mutex); // Déverrouiller le mutex
     return 1;
 }
 
@@ -1648,6 +1659,7 @@ char *retirer_suffixe(char *str) {
 
 // Fonction pour copier un répertoire et son contenu
 int copy_repertoire(Filesystem *fs, const char *source_dir, const char *dest_name, const char *dest_parent) {
+    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_source_path[MAX_FILENAME * 2];
     char full_dest_path[MAX_FILENAME * 2];
     char temp_current_dir[MAX_PATH-1];
@@ -1768,11 +1780,13 @@ int copy_repertoire(Filesystem *fs, const char *source_dir, const char *dest_nam
 
     save_filesystem(fs);
     printf("Répertoire '%s' copié vers '%s' avec son contenu.\n", full_source_path, full_dest_path);
+   //pthread_mutex_unlock(&fs_mutex); // Déverrouiller le mutex
     return 1;
 }
 
 // Fonction pour déplacer un repertoire
 int move_directory(Filesystem *fs, const char *repertoirename, const char *rep_name) {
+    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     // Chemins complets pour le répertoire source et de destination
     char full_path_source[MAX_FILENAME * 2];
     char full_file_path[MAX_FILENAME * 2];
@@ -1847,11 +1861,13 @@ int move_directory(Filesystem *fs, const char *repertoirename, const char *rep_n
     save_filesystem(fs);
     printf("Répertoire '%s' déplacé vers '%s'.\n", full_path_source, full_file_path);
     strncpy( fs->current_directory, prevent_path,MAX_FILENAME);
+    //pthread_mutex_unlock(&fs_mutex); // Déverrouiller le mutex
     return 1;
 }
 
 // Fonction rénommer un fichier
 int rename_file(Filesystem *fs, const char *file_name, const char *link_name) {
+    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path_source[MAX_FILENAME * 2];
     char full_file_path[MAX_FILENAME * 2];
 
@@ -1887,11 +1903,13 @@ int rename_file(Filesystem *fs, const char *file_name, const char *link_name) {
     // Sauvegarder le système de fichiers
     save_filesystem(fs);
     printf("Fichier '%s' renommé en '%s'.\n", file_name, link_name);
+    //pthread_mutex_unlock(&fs_mutex); // Déverrouiller le mutex
     return 1;
 }
 
 // Fonction rénommer un répertoire
 int rename_directory(Filesystem *fs, const char *repnamedepart, const char *repnamefinal) {
+    //pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path_source[MAX_FILENAME * 2];
     char full_file_path[MAX_FILENAME * 2];
 
@@ -1927,6 +1945,7 @@ int rename_directory(Filesystem *fs, const char *repnamedepart, const char *repn
     // Sauvegarder le système de fichiers
     save_filesystem(fs);
     printf("Répertoire '%s' renommé en '%s'.\n", repnamedepart, repnamefinal);
+    //pthread_mutex_unlock(&fs_mutex); // Déverrouiller le mutex
     return 1;
 }
 
