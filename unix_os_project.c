@@ -6,131 +6,350 @@
 #include <time.h>   // Pour la gestion du temps (création/modification des fichiers)
 #include <pthread.h> // Pour les threads
 
-// Définition des constantes
-#define MAX_FILES 1000                      // Nombre maximal de fichiers
-#define MAX_FILENAME 50                     // Taille maximale du nom de fichier
-#define MAX_DIRECTORY 50                    // Taille maximale du nom de répertoire
-#define FILESYSTEM_FILE "my_filesystem.dat" // Nom du fichier contenant le système de fichiers
-#define TRACE_FILE "trace_execution.txt"    // Nom du fichier contenant les traces d'exécution
-#define NAME_SIZE 10                        // Taille du nom d'utilisateur
-#define PERM_SIZE 11                        // Taille des permissions
-#define BLOCK_SIZE 512                      // Taille d'un bloc de données
-#define NUM_BLOCKS 1024                     // Nombre total de blocs
-#define NUM_INODES 128                      // Nombre total d'inodes
-#define GROUP_SIZE 10                       // Taille de groupe par personne
-#define NUM_USER 20                         // Nombre total d'utilisateurs
-#define FILE_SIZE 12                        // Taille du fichier par défaut
-#define MAX_CONTENT 100                     // Taille maximale du contenu
-#define NUM_LIEN_MAX 10                     // Nombre maximal de liens
-#define MAX_PATH 50                         // Taille maximale du chemin
-#define GROUP_FILE "./users/groups"         // Répertoire des groupes
-#define MAX_PASSWORD 50                     // Taille maximale du mot de passe
-#define MAX_HISTORY 100                     // Nombre maximum de commandes dans l'historique
-#define MAX_CMD_LENGTH 100                  // Longueur maximale d'une commande
+/** @def MAX_FILES
+ *  @brief Nombre maximal de fichiers pouvant être stockés dans le système.
+ */
+#define MAX_FILES 1000
 
+/** @def MAX_FILENAME
+ *  @brief Taille maximale du nom d'un fichier.
+ */
+#define MAX_FILENAME 50
+
+/** @def MAX_DIRECTORY
+ *  @brief Taille maximale du nom d'un répertoire.
+ */
+#define MAX_DIRECTORY 50
+
+/** @def FILESYSTEM_FILE
+ *  @brief Nom du fichier contenant la représentation du système de fichiers.
+ */
+#define FILESYSTEM_FILE "my_filesystem.dat"
+
+/** @def TRACE_FILE
+ *  @brief Nom du fichier de journalisation des actions (traces d'exécution).
+ */
+#define TRACE_FILE "trace_execution.txt"
+
+/** @def NAME_SIZE
+ *  @brief Taille maximale du nom d'un utilisateur.
+ */
+#define NAME_SIZE 10
+
+/** @def PERM_SIZE
+ *  @brief Taille de la chaîne représentant les permissions (ex. : -rwxr-xr--).
+ */
+#define PERM_SIZE 11
+
+/** @def BLOCK_SIZE
+ *  @brief Taille d'un bloc de données en octets.
+ */
+#define BLOCK_SIZE 512
+
+/** @def NUM_BLOCKS
+ *  @brief Nombre total de blocs disponibles dans le système de fichiers.
+ */
+#define NUM_BLOCKS 1024
+
+/** @def NUM_INODES
+ *  @brief Nombre total d'inodes disponibles.
+ */
+#define NUM_INODES 128
+
+/** @def GROUP_SIZE
+ *  @brief Nombre maximal de groupes auxquels un utilisateur peut appartenir.
+ */
+#define GROUP_SIZE 10
+
+/** @def NUM_USER
+ *  @brief Nombre total d'utilisateurs pris en charge par le système.
+ */
+#define NUM_USER 20
+
+/** @def FILE_SIZE
+ *  @brief Taille par défaut d'un fichier.
+ */
+#define FILE_SIZE 12
+
+/** @def MAX_CONTENT
+ *  @brief Taille maximale du contenu d'un fichier.
+ */
+#define MAX_CONTENT 100
+
+/** @def NUM_LIEN_MAX
+ *  @brief Nombre maximal de liens (symboliques ou physiques) par fichier.
+ */
+#define NUM_LIEN_MAX 10
+
+/** @def MAX_PATH
+ *  @brief Taille maximale d'un chemin d'accès.
+ */
+#define MAX_PATH 50
+
+/** @def GROUP_FILE
+ *  @brief Chemin vers le fichier de configuration des groupes.
+ */
+#define GROUP_FILE "./users/groups"
+
+/** @def MAX_PASSWORD
+ *  @brief Taille maximale d'un mot de passe utilisateur.
+ */
+#define MAX_PASSWORD 50
+
+/** @def MAX_HISTORY
+ *  @brief Nombre maximal de commandes stockées dans l'historique.
+ */
+#define MAX_HISTORY 100
+
+/** @def MAX_CMD_LENGTH
+ *  @brief Longueur maximale d'une commande.
+ */
+#define MAX_CMD_LENGTH 100
+
+
+/**
+ * @struct CommandHistory
+ * @brief Représente l'historique des commandes exécutées par l'utilisateur.
+ */
 typedef struct {
-    char commands[MAX_HISTORY][MAX_CMD_LENGTH];
-    int count;
-    int current;  // Pour la navigation dans l'historique
+    char commands[MAX_HISTORY][MAX_CMD_LENGTH]; /**< Tableau des commandes saisies. */
+    int count;    /**< Nombre total de commandes enregistrées. */
+    int current;  /**< Index courant pour la navigation dans l'historique. */
 } CommandHistory;
 
-// Définition de la structure d'un tableau
-typedef struct{
-    char data[50];  // Tableau de chaîne de caractères
+/**
+ * @struct Tab
+ * @brief Représente une chaîne de caractères utilisé pour stocker nom des liens/groupes de chaque utilisateur
+ */
+typedef struct {
+    char data[50];
 } Tab;
 
-// Structure représentant un lien symbolique ou physique
+/**
+ * @struct Lien
+ * @brief Représente les liens physiques et symboliques associés à un fichier ou répertoire.
+ */
 typedef struct {
-    Tab hardLink[NUM_LIEN_MAX];      // Tableau de liens physiques
-    Tab symbolicLink[NUM_LIEN_MAX];  // Tableau de liens symboliques
+    Tab hardLink[NUM_LIEN_MAX];      /**< Tableau de liens physiques. */
+    Tab symbolicLink[NUM_LIEN_MAX];  /**< Tableau de liens symboliques. */
 } Lien;
 
-// Structure représentant un inode (métadonnées d'un fichier ou répertoire)
+/**
+ * @struct Inode
+ * @brief Représente les métadonnées d'un fichier, répertoire ou lien dans le file system.
+ */
 typedef struct {
-    ino_t inode_number;               // Numéro d'inode unique
-    ino_t parent_inode_number;        // Numéro d'inode parent 
-    char name[MAX_FILENAME];          // Nom du fichier ou du répertoire
-    int is_directory;                 // Indicateur si c'est un répertoire (1) ou un fichier (0)
-    int is_link;                      // Indicateur si c'est un lien (1) ou non (0)
-    int is_group;                     // Indicateur si c'est un groupe 
-    int is_file;                      // Indicateur si c'est un fichier (1) ou non (0)    
-    int size;                         // Taille du fichier en octets
-    char group[GROUP_SIZE];           // Groupe associé fichier ou du répertoire
-    time_t creation_time;             // Date de création
-    time_t modification_time;         // Date de la dernière modification
-    char owner[MAX_FILENAME];         // Propriétaire du fichier
-    char permissions[PERM_SIZE];      // Permissions du fichier (ex: "-rwxr-xr--"),du reperdtoire (ex: "drwxr-xr--"), du lien (ex: "lrwxr-xr--")
-    int block_indices[NUM_BLOCKS];    // Indices des blocs alloués
-    int block_count;                  // Nombre de blocs alloués
-    int num_liens;                    // Nombre de liens physiques
-    int num_hard_links;               // Nombre de liens physiques
-    Lien lien;                        // Lien symbolique et physique
+    ino_t inode_number;               /**< Numéro unique de l'inode. */
+    ino_t parent_inode_number;       /**< Numéro de l'inode parent */
+    char name[MAX_FILENAME];         /**< Nom du fichier ou répertoire. */
+    int is_directory;                /**< Indique si c'est un répertoire (1) ou non (0). */
+    int is_link;                     /**< Indique si c'est un lien (1) ou non (0). */
+    int is_group;                    /**< Indique si un groupe est associé. */
+    int is_file;                     /**< Indique si c'est un fichier (1) ou non (0). */
+    int size;                        /**< Taille du fichier. */
+    char group[GROUP_SIZE];          /**< Groupe associé au fichier ou répertoire. */
+    time_t creation_time;            /**< Date et heure de création. */
+    time_t modification_time;        /**< Date et heure de la dernière modification. */
+    char owner[MAX_FILENAME];        /**< Nom du propriétaire du fichier. */
+    char permissions[PERM_SIZE];     /**< Chaîne représentant les permissions. */
+    int block_indices[NUM_BLOCKS];   /**< Indices des blocs de données utilisés. */
+    int block_count;                 /**< Nombre total de blocs alloués. */
+    int num_liens;                   /**< Nombre total de liens. */
+    int num_hard_links;              /**< Nombre de liens physiques. */
+    Lien lien;                       /**< Structure contenant les liens symboliques et physiques. */
 } Inode;
 
-// Structure pour associer une personne à un Group
+
+/**
+ * @struct User_Group
+ * @brief Associe un utilisateur à un ou plusieurs groupes, avec gestion des droits.
+ */
 typedef struct {
-    char user[NAME_SIZE];        // Nom du l'utilisateur
-    Tab group[GROUP_SIZE];       // Groupe associé a l'utilisateur
-    int taille;                  // Taille du groupe
-    char password[MAX_PASSWORD]; // Mot de passe de l'utilisateur
-    int is_root;                    // Indicateur si l'utilisateur est root (1) ou non (0)
-    int is_admin;                // Indicateur si l'utilisateur est admin (1) ou non (0)
-    char root_pwd[MAX_PASSWORD]; // Mot de passe root
+    char user[NAME_SIZE];            /**< Nom de l'utilisateur. */
+    Tab group[GROUP_SIZE];           /**< Groupes auxquels l'utilisateur appartient. */
+    int taille;                      /**< Nombre de groupes associés. */
+    char password[MAX_PASSWORD];     /**< Mot de passe de l'utilisateur. */
+    int is_root;                     /**< Indique si l'utilisateur est root (1) ou non (0). */
+    int is_admin;                    /**< Indique si l'utilisateur est admin (1) ou non (0). */
+    char root_pwd[MAX_PASSWORD];     /**< Mot de passe root. */
 } User_Group;
 
-// Structure représentant le superbloc (métadonnées du système de fichiers)
+/**
+ * @struct superblock
+ * @brief Contient les métadonnées globales du système de fichiers.
+ */
 typedef struct {
-    ino_t next_inode_number;  // Prochain numéro disponible
-    int num_blocks;               // Nombre total de blocs
-    int num_inodes;               // Nombre total d'inodes
-    int free_blocks[NUM_BLOCKS];  // Tableau des blocs libres (1 = libre, 0 = occupé)
-    int free_inodes[NUM_INODES];  // Tableau des inodes libres (1 = libre, 0 = occupé)
-    Inode inodes[NUM_INODES];     // Table des inodes
+    ino_t next_inode_number;           /**< Prochain numéro d'inode disponible. */
+    int num_blocks;                    /**< Nombre total de blocs dans le système. */
+    int num_inodes;                    /**< Nombre total d'inodes dans le système. */
+    int free_blocks[NUM_BLOCKS];       /**< Indique quels blocs sont libres (1) ou occupés (0). */
+    int free_inodes[NUM_INODES];       /**< Indique quels inodes sont libres (1) ou occupés (0). */
+    Inode inodes[NUM_INODES];          /**< Table des inodes du système. */
 } superblock;
 
-// Structure représentant le système de fichiers
+/**
+ * @struct Filesystem
+ * @brief Structure principale représentant l'état global du système de fichiers.
+ */
 typedef struct {
-    Inode inodes[MAX_FILES];          // Table des inodes
-    User_Group group[NUM_USER];       // Table des groupe
-    int inode_count;                  // Nombre d'inodes utilisés
-    int user_count;                  // Nombre de groupes utilisés
-    char current_directory[MAX_PATH]; // Répertoire actuel
-    CommandHistory history;           // Historique des commandes
+    Inode inodes[MAX_FILES];             /**< Ensemble des inodes. */
+    User_Group group[NUM_USER];          /**< Liste des utilisateurs. */
+    int inode_count;                     /**< Nombre actuel d'inodes utilisés. */
+    int user_count;                      /**< Nombre d'utilisateurs enregistrés. */
+    char current_directory[MAX_PATH];    /**< Répertoire courant de l'utilisateur. */
+    CommandHistory history;              /**< Historique des commandes utilisées. */
 } Filesystem;
 
+
 // Structure pour associer un nom de fichier à un inode
+/**
+ * @struct file_entry
+ * @brief Associe un nom de fichier à son index d'inode correspondant.
+ */
 typedef struct {
-    char name[50];      // Nom du fichier
-    int inode_index;    // Index de l'inode associé
+    char name[50];      /**< Nom du fichier. */
+    int inode_index;    /**< Index de l'inode associé. */
 } file_entry;
 
 // Variables globales
 superblock sb; 
-char block_data[NUM_BLOCKS][BLOCK_SIZE]; // Tableau pour stocker les données des fichiers
-file_entry file_table[NUM_INODES];       // Table des noms de fichiers
+char block_data[NUM_BLOCKS][BLOCK_SIZE]; /**< Tableau pour stocker les données des fichiers. */
+file_entry file_table[NUM_INODES];       /**< Table des noms de fichiers. */
 
-char current_own[NAME_SIZE];     // Utilisateur actuel
-char current_group[GROUP_SIZE];  // Utilisateur actuel
-char permissions[PERM_SIZE];     // Permissions par défaut
-int sudo = 0;                    // Indicateur pour le mode super utilisateur
-pthread_mutex_t fs_mutex = PTHREAD_MUTEX_INITIALIZER; // Mutex pour la synchronisation
+char current_own[NAME_SIZE];     /**< Utilisateur actuel. */
+char current_group[GROUP_SIZE];  /**< Groupe actuel de l'utilisateur. */
+char permissions[PERM_SIZE];     /**< Permissions par défaut. */
+int sudo = 0;                    /**< Indicateur pour le mode super utilisateur. */
+pthread_mutex_t fs_mutex = PTHREAD_MUTEX_INITIALIZER; /**< Mutex pour la synchronisation. */
 
 
+/**
+ * @brief Sauvegarde l'état actuel du système de fichiers.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers à sauvegarder.
+ */
 void save_filesystem(Filesystem *fs);
+
+/**
+ * @brief Supprime un fichier du système de fichiers.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param filename Nom du fichier à supprimer.
+ * @return int 1 si le fichier a été supprimé avec succès, 0 sinon.
+ */
 int delete_file(Filesystem *fs, const char *filename);
+
+/**
+ * @brief Calcule la taille totale d'un répertoire de manière récursive.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param dirpath Chemin du répertoire dont la taille doit être calculée.
+ * @return int Taille totale du répertoire en octets.
+ */
 int calculate_directory_size_recursive(Filesystem *fs, const char *dirpath);
+
+/**
+ * @brief Crée un répertoire dans le système de fichiers.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param dirname Nom du répertoire à créer.
+ * @param destname Nom du répertoire parent (peut être NULL).
+ * @return int 1 si le répertoire a été créé avec succès, 0 sinon.
+ */
 int create_directory(Filesystem *fs, const char *dirname, const char *destname);
+
+/**
+ * @brief Supprime un répertoire du système de fichiers.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param dirname Nom du répertoire à supprimer.
+ * @return int 1 si le répertoire a été supprimé avec succès, 0 sinon.
+ */
 int delete_directory(Filesystem *fs, const char *dirname);
+
+/**
+ * @brief Ajoute un groupe à un utilisateur.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param groupname Nom du groupe à ajouter.
+ * @return int 1 si le groupe a été ajouté avec succès, 0 sinon.
+ */
 int user_add_group(Filesystem *fs, const char *groupname);
+
+/**
+ * @brief Récupère un pointeur vers l'inode correspondant à un nom de fichier.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param filename Nom du fichier dont l'inode doit être récupéré.
+ * @return Inode* Pointeur vers l'inode correspondant, ou NULL si non trouvé.
+ */
 Inode* get_inode_by_name(Filesystem *fs, const char *filename);
+
+/**
+ * @brief Extrait le chemin à partir d'un chemin complet.
+ * 
+ * @param full_path Chemin complet.
+ * @return char* Chemin extrait.
+ */
 char* extract_path(const char* full_path);
+
+/**
+ * @brief Retire le suffixe d'un chemin.
+ * 
+ * @param str Chaîne contenant le chemin.
+ * @return char* Chaîne sans le suffixe.
+ */
 char *retirer_suffixe(char *str);
+
+/**
+ * @brief Extrait le dernier élément d'un chemin.
+ * 
+ * @param full_path Chemin complet.
+ * @return char* Dernier élément du chemin.
+ */
 char* last_element(const char* full_path);
+
+/**
+ * @brief Réinitialise l'espace de travail d'un utilisateur.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param username Nom de l'utilisateur dont l'espace doit être réinitialisé.
+ * @return int 1 si l'espace a été réinitialisé avec succès, 0 sinon.
+ */
 int reset_user_workspace(Filesystem *fs, const char *username);
+
+/**
+ * @brief Crée un répertoire de groupe.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param dirname Nom du répertoire de groupe à créer.
+ * @return int 1 si le répertoire a été créé avec succès, 0 sinon.
+ */
 int create_directory_group(Filesystem *fs, const char *dirname);
+
+/**
+ * @brief Crée un répertoire dans le répertoire home.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param dirname Nom du répertoire à créer.
+ * @param destname Nom du répertoire parent (peut être NULL).
+ * @return int 1 si le répertoire a été créé avec succès, 0 sinon.
+ */
 int create_directory_home(Filesystem *fs, const char *dirname, const char *destname);
 
-// Fonction pour créer un groupe dans ./user/groups s'il n'existe pas
+
+/**
+ * @brief Crée un répertoire de groupe dans `./users/groups` s'il n'existe pas déjà.
+ *
+ * Cette fonction vérifie d'abord si un répertoire correspondant au nom du groupe
+ * existe déjà parmi les inodes du système. Si ce n'est pas le cas, elle sauvegarde
+ * le répertoire courant, bascule vers `./users/groups`, crée le répertoire du groupe,
+ * l'ajoute à la liste des groupes utilisateurs, puis restaure le répertoire courant.
+ *
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param groupname Nom du groupe à créer.
+ * @return int 1 si le répertoire a été créé, 0 s'il existait déjà.
+ */
 int create_group_directory(Filesystem *fs, const char *groupname) {
     memset(current_group, '\0', sizeof(current_group));
     char group_path[MAX_FILENAME * 2];
@@ -160,7 +379,18 @@ int create_group_directory(Filesystem *fs, const char *groupname) {
     return 1; // Le répertoire a été créé avec succès
 }
 
-// Fonction pour créer un groupe
+/**
+ * @brief Ajoute un groupe à un utilisateur dans le système de fichiers.
+ *
+ * Cette fonction vérifie d'abord si le nom du groupe est valide, puis recherche
+ * l'utilisateur courant dans la table des groupes. Si le groupe n'existe pas encore
+ * pour cet utilisateur et que la limite de groupes n'est pas atteinte, le groupe est
+ * ajouté à sa liste. Le groupe courant est également mis à jour si besoin.
+ *
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param groupname Nom du groupe à ajouter.
+ * @return int 1 si le groupe a été ajouté avec succès, 0 sinon.
+ */
 int user_add_group(Filesystem *fs, const char *groupname) {
     if (groupname == NULL || strlen(groupname) == 0) {
         printf("Erreur : nom de groupe invalide.\n");
@@ -216,7 +446,19 @@ int user_add_group(Filesystem *fs, const char *groupname) {
     return 0;
 }
 
-// Fonction pour quitter un groupe avec gestion du propriétaire
+/**
+ * @brief Permet à un utilisateur de quitter un groupe.
+ *
+ * Cette fonction permet à un utilisateur de quitter un groupe.
+ * Si l'utilisateur est propriétaire et que le groupe est vide,
+ * il lui est proposé de supprimer le groupe ou de rester membre.
+ * Si l'utilisateur est simplement un membre, le groupe est retiré de sa liste. 
+ * Si l'utilisateur est le propriétaire, il peut également transférer la propriété à un autre membre.
+ *
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param groupname Nom du groupe à quitter.
+ * @return int 1 si l'utilisateur a quitté le groupe avec succès, 0 sinon (erreur ou annulation).
+ */
 int leave_group(Filesystem *fs, const char *groupname) {
     // Vérifications de base
     if (strlen(current_own) == 0) {
@@ -355,7 +597,16 @@ int leave_group(Filesystem *fs, const char *groupname) {
     return 1; // Succès
 }
 
-// Fonction pour initialiser le superbloc
+/**
+ * @brief Initialise le superbloc du système de fichiers.
+ *
+ * Cette fonction initialise le superbloc en définissant les valeurs par défaut, telles que :
+ * - Le prochain numéro d'inode disponible (commence à 1).
+ * - Le nombre total de blocs et d'inodes.
+ * - Les blocs et inodes libres (tous initialement marqués comme libres).
+ * - La table des fichiers, qui est initialisée avec des indices d'inodes invalides (-1).
+ *
+ */
 void init_superblock() {
     sb.next_inode_number = 1;  // Commence à 1 (0 peut être réservé)
     sb.num_blocks = NUM_BLOCKS;
@@ -369,7 +620,19 @@ void init_superblock() {
     }
 }
 
-// Fonction pour sauvegarder le système de fichiers dans un fichier
+/**
+ * @brief Sauvegarde l'état actuel du système de fichiers dans un fichier binaire.
+ *
+ * Cette fonction enregistre l'état du système de fichiers dans un fichier binaire`FILESYSTEM_FILE`. 
+ * Elle écrit :
+ * - La structure complète du Filesystem.
+ * - Le superbloc contenant les métadonnées globales du système de fichiers.
+ * - Les données des blocs de données alloués.
+ *
+ * @param fs Pointeur vers la structure du système de fichiers à sauvegarder.
+ *
+ * @note Si le fichier ne peut pas être ouvert pour l'écriture, un message d'erreur est affiché.
+ */
 void save_filesystem(Filesystem *fs) {
     FILE *file = fopen(FILESYSTEM_FILE, "wb");
     if (file) {
@@ -382,7 +645,23 @@ void save_filesystem(Filesystem *fs) {
     }
 }
 
-// Fonction pour initialiser ou charger le système de fichiers
+/**
+ * @brief Initialise ou charge le système de fichiers à partir d'un fichier binaire.
+ *
+ * Cette fonction vérifie si le fichier du système de fichiers existe. Si le fichier n'est pas trouvé,
+ * elle effectue une initialisation du système de fichiers en créant des répertoires par défaut, 
+ * initialisant le superbloc et sauvegardant l'état du système dans un fichier binaire.
+ * 
+ * Si le fichier du système de fichiers est trouvé, il charge les structures de données du système de 
+ * fichiers, y compris le superbloc et les blocs de données.
+ *
+ * @param fs Pointeur vers la structure du système de fichiers à initialiser ou à charger.
+ *
+ * @note Si un fichier de trace (TRACE_FILE) est disponible, il est ouvert en mode ajout pour enregistrer 
+ *       des messages de trace pendant l'initialisation.
+ * @note En cas d'initialisation, plusieurs répertoires de base sont créés : `home`, `users`, `groups`, 
+ *       `local`, et d'autres répertoires par défaut pour le bon fonctionnement du système de fichiers.
+ */
 void init_filesystem(Filesystem *fs) {
     FILE *file = fopen(FILESYSTEM_FILE, "rb");
     FILE *trace_file = fopen(TRACE_FILE, "a");
@@ -410,7 +689,16 @@ void init_filesystem(Filesystem *fs) {
     }
 }
 
-// Fonction pour afficher le nombre de blocs libres
+/**
+ * @brief Affiche le nombre de blocs libres disponibles dans le système de fichiers.
+ *
+ * Cette fonction parcourt le tableau des blocs libres dans le superbloc et compte combien de blocs
+ * sont disponibles (indiqués par la valeur `1`). Le nombre de blocs libres est ensuite affiché dans
+ * la sortie standard.
+ *
+ * @return Le nombre de blocs libres disponibles dans le système de fichiers.
+ *
+ */
 int print_free_blocks() {
     int free_blocks = 0;
     for (int i = 0; i < NUM_BLOCKS; i++) {
@@ -422,7 +710,20 @@ int print_free_blocks() {
     return free_blocks;
 }
 
-// Fonction pour lister tous les liens symboliques pointant vers un fichier
+/**
+ * @brief Liste tous les liens symboliques pointant vers un fichier donné.
+ *
+ * Cette fonction parcourt l'ensemble des inodes du système de fichiers et vérifie si des fichiers
+ * sont des liens symboliques pointant vers le fichier spécifié par `target_path`. Si des liens sont
+ * trouvés, leurs chemins sont affichés. La fonction affiche également le nombre de liens symboliques
+ * trouvés.
+ *
+ * @param fs Pointeur vers le système de fichiers contenant les inodes à parcourir.
+ * @param target_path Chemin du fichier cible pour lequel les liens symboliques doivent être recherchés.
+ *
+ * @return 1 si des liens symboliques sont trouvés et listés, sinon 0.
+ *
+ */
 int list_symbolic_links(Filesystem *fs, const char *target_path) {
     int found = 0;
     int nombreLiens = 0;
@@ -445,7 +746,20 @@ int list_symbolic_links(Filesystem *fs, const char *target_path) {
     return 1;
 }
 
-// Fonction pour lister tous les hardlinks d'un fichier
+/**
+ * @brief Liste tous les liens physiques pointant vers un fichier donné.
+ *
+ * Cette fonction parcourt l'ensemble des inodes du système de fichiers et vérifie si des fichiers
+ * sont des liens physiques pointant vers le fichier spécifié par `target_path`. Si des liens physiques
+ * sont trouvés, leurs chemins sont affichés. La fonction affiche également le nombre de liens physiques
+ * trouvés.
+ *
+ * @param fs Pointeur vers le système de fichiers contenant les inodes à parcourir.
+ * @param target_path Chemin du fichier cible pour lequel les liens physiques doivent être recherchés.
+ *
+ * @return 1 si des liens physiques sont trouvés et listés, sinon 0.
+ *
+ */
 int list_hard_links(Filesystem *fs, const char *target_path) {
     int found = 0;
     int nombreLiens = 0;
@@ -468,7 +782,21 @@ int list_hard_links(Filesystem *fs, const char *target_path) {
     return 1;
 }
 
-// Fonction pour créer un répertoire
+/**
+ * @brief Crée un répertoire dans le système de fichiers à un emplacement donné.
+ *
+ * Cette fonction permet de créer un répertoire dans le système de fichiers. Si le nom du répertoire
+ * est valide et qu'il n'y a pas de dépassement du nombre maximum de fichiers, un nouveau répertoire est
+ * ajouté à l'inode, et les métadonnées associées à ce répertoire sont initialisées. Le chemin du répertoire
+ * est construit en fonction du répertoire courant et du nom du répertoire.
+ *
+ * @param fs Pointeur vers le système de fichiers dans lequel le répertoire sera créé.
+ * @param dirname Nom du répertoire à créer.
+ * @param destname (Optionnel) Nom du répertoire parent sous lequel créer ce répertoire, ou NULL si aucun.
+ *
+ * @return 1 si le répertoire a été créé avec succès, sinon 0.
+ *
+ */
 int create_directory_home(Filesystem *fs, const char *dirname, const char *destname) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     if (fs->inode_count >= MAX_FILES) {
@@ -532,7 +860,24 @@ int create_directory_home(Filesystem *fs, const char *dirname, const char *destn
     return 1;
 }
 
-// Fonction pour créer un répertoire
+/**
+ * @brief Crée un répertoire dans le système de fichiers à un emplacement spécifique.
+ * 
+ * Cette fonction permet de créer un répertoire dans le système de fichiers. Le répertoire
+ * sera créé dans le répertoire courant de l'utilisateur ou dans un répertoire spécifié
+ * par `destname`. La fonction vérifie si l'emplacement est valide et si l'utilisateur a
+ * les permissions nécessaires pour effectuer la création. Si l'emplacement ou les permissions
+ * ne sont pas corrects, la fonction retourne une erreur.
+ *
+ * @param fs Pointeur vers la structure du système de fichiers où le répertoire sera créé.
+ * @param dirname Le nom du répertoire à créer.
+ * @param destname Le nom du répertoire parent où créer le répertoire (peut être NULL pour créer dans le répertoire courant).
+ * 
+ * @return 1 Si la création du répertoire a réussi.
+ * @return 0 Si la création du répertoire a échoué (par exemple, en raison d'un emplacement
+ *         invalide, d'un répertoire déjà existant, ou de permissions insuffisantes).
+ *
+ */
 int create_directory(Filesystem *fs, const char *dirname, const char *destname) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     if (fs->inode_count >= MAX_FILES) {
@@ -642,7 +987,21 @@ int create_directory(Filesystem *fs, const char *dirname, const char *destname) 
     return 1;
 }
 
-// Fonction pour créer un répertoire de groupe
+/**
+ * @brief Crée un répertoire de groupe dans le système de fichiers.
+ * 
+ * Cette fonction permet de créer un répertoire de groupe dans le système de fichiers, c'est à dire un répertoire avec 
+ * des permissions spécifiques qui limitent l'accès à ce répertoire. Ce répertoire est créé à l'emplacement du 
+ * répertoire courant dans le système de fichiers. Si le répertoire existe déjà ousi le nombre maximum de fichiers est atteint, 
+ * la fonction retourne une erreur.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers où le répertoire sera créé.
+ * @param dirname Le nom du répertoire de groupe à créer.
+ * 
+ * @return 1 Si la création du répertoire de groupe a réussi.
+ * @return 0 Si la création du répertoire a échoué (par exemple, en raison du nombre maximum de fichiers atteint ou si un répertoire du même nom existe déjà).
+ * 
+ */
 int create_directory_group(Filesystem *fs, const char *dirname) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     if (fs->inode_count >= MAX_FILES) {
@@ -701,7 +1060,21 @@ int create_directory_group(Filesystem *fs, const char *dirname) {
     pthread_mutex_unlock(&fs_mutex); // Déverrouiller avant de retourner
 }
 
-// Fonction pour supprimer un groupe
+/**
+ * @brief Supprime un groupe du système de fichiers.
+ * 
+ * Cette fonction permet de supprimer un groupe du système de fichiers, y compris son répertoire associé,
+ * les utilisateurs associés à ce groupe et, éventuellement, les fichiers du groupe. Pour ce faire, les privilèges
+ * d'administrateur (sudo) sont nécessaires. Si le groupe n'existe pas ou si l'opération n'est pas exécutée avec
+ * les droits appropriés, la fonction renvoie une erreur.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers à modifier.
+ * @param groupname Le nom du groupe à supprimer.
+ * 
+ * @return 1 Si la suppression du groupe a réussi.
+ * @return 0 Si la suppression échoue.
+ * 
+ */
 int delete_group(Filesystem *fs, const char *groupname) {
     // Vérification que le nom de groupe est valide
     if (groupname == NULL || strlen(groupname) == 0) {
@@ -790,7 +1163,21 @@ int delete_group(Filesystem *fs, const char *groupname) {
     return 1;
 }
 
-// Fonction pour supprimer un répertoire
+/**
+ * @brief Supprime un répertoire du système de fichiers.
+ * 
+ * Cette fonction permet de supprimer un répertoire du système de fichiers en fonction de son nom. Si le répertoire
+ * est trouvé, il est supprimé de la liste des inodes. 
+ * Si le répertoire est situé dans le répertoire spécial des groupes,un message d'erreur indique que la commande 
+ * appropriée à utiliser est `delgroup <nom>`.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers à modifier.
+ * @param dirname Le nom du répertoire à supprimer.
+ * 
+ * @return 1 Si le répertoire a été supprimé avec succès.
+ * @return 0 Si le répertoire n'a pas été trouvé ou si une erreur se produit.
+ * 
+ */
 int delete_directory(Filesystem *fs, const char *dirname) {
     
    if (strcmp(fs->current_directory,"./users/groups/") == 0) {
@@ -821,7 +1208,19 @@ int delete_directory(Filesystem *fs, const char *dirname) {
     return 0; // Répertoire introuvable
 }
 
-// Fonction pour vérifier si un utilisateur appartient à un groupe
+/**
+ * @brief Vérifie si un utilisateur appartient à un groupe.
+ * 
+ * Cette fonction permet de vérifier si un utilisateur spécifique appartient à un groupe donné dans le système de fichiers.
+ * Elle parcourt la liste des groupes d'un utilisateur et vérifie si le groupe spécifié est présent dans les groupes de cet utilisateur.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers contenant les informations sur les utilisateurs et leurs groupes.
+ * @param username Le nom de l'utilisateur à vérifier.
+ * @param groupname Le nom du groupe à vérifier.
+ * 
+ * @return 1 Si l'utilisateur appartient au groupe.
+ * @return 0 Si l'utilisateur n'appartient pas au groupe.
+ */
 int is_user_in_group(Filesystem *fs, const char *username, const char *groupname) {
     for (int i = 0; i < NUM_USER; i++) {
         if (strcmp(fs->group[i].user, username) == 0) {
@@ -836,7 +1235,19 @@ int is_user_in_group(Filesystem *fs, const char *username, const char *groupname
     return 0; // L'utilisateur n'est pas dans le groupe
 }
 
-// Fonction pour changer de répertoire
+/**
+ * @brief Change le répertoire courant dans le système de fichiers.
+ * 
+ * Cette fonction permet de changer le répertoire courant dans le système de fichiers. Elle prend en charge les commandes spéciales comme 
+ * `..` pour revenir au répertoire parent et vérifie les permissions d'accès aux répertoires privés avant de permettre la navigation. 
+ * Le chemin du répertoire est validé et construit avant d'être utilisé pour naviguer dans le système de fichiers.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers contenant l'information des répertoires et des inodes.
+ * @param dirname Le nom du répertoire vers lequel l'utilisateur souhaite se déplacer.
+ * 
+ * @return 1 Si le changement de répertoire a réussi.
+ * @return 0 Si le changement de répertoire a échoué (répertoire introuvable ou accès refusé).
+ */
 int change_directory(Filesystem *fs, const char *dirname) {
     // Vérification des entrées
     if (dirname == NULL || strlen(dirname) == 0) {
@@ -921,7 +1332,21 @@ int change_directory(Filesystem *fs, const char *dirname) {
     return 0; // Répertoire introuvable
 }
 
-// Fonction pour créer un fichier
+/**
+ * @brief Crée un fichier dans le système de fichiers.
+ * 
+ * Cette fonction permet de créer un fichier dans le répertoire courant ou dans un groupe, avec des permissions et des métadonnées par défaut. 
+ * Elle vérifie si le fichier existe déjà et si un groupe est défini pour l'utilisateur actuel. 
+ * Elle génère également un nouvel inode pour le fichier et met à jour les métadonnées associées à ce fichier.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers contenant les informations des répertoires et des fichiers.
+ * @param filename Le nom du fichier à créer.
+ * @param size La taille du fichier en octets.
+ * @param owner Le nom du propriétaire du fichier.
+ * 
+ * @return 1 Si le fichier a été créé avec succès.
+ * @return 0 Si le fichier n'a pas pu être créé.
+ */
 int create_file(Filesystem *fs, const char *filename, size_t size, const char *owner) {
     strcpy(permissions, "-rw-r--r--"); // Permissions par défaut 
 
@@ -997,7 +1422,18 @@ int create_file(Filesystem *fs, const char *filename, size_t size, const char *o
     return 1;
 }
 
-// Fonction pour lister le contenu du répertoire courant
+/**
+ * @brief Liste le contenu du répertoire courant.
+ * 
+ * Cette fonction parcourt tous les inodes du système de fichiers et affiche les éléments présents dans le répertoire courant.
+ * Elle identifie les fichiers, répertoires et liens dans le répertoire courant, et affiche leur type et taille.
+ * Si le répertoire est vide, un message en informe l'utilisateur.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers contenant les informations des répertoires et des fichiers.
+ * 
+ * @return 1 Si le contenu du répertoire a été listé avec succès.
+ * @return 0 Si le répertoire est vide.
+ */
 int list_directory(Filesystem *fs) {
     printf("Contenu de '%s':\n", fs->current_directory);
     int found = 0;
@@ -1034,7 +1470,24 @@ int list_directory(Filesystem *fs) {
     return 1;
 }
 
-// Fonction pour afficher les métadonnées d'un fichier
+/**
+ * @brief Affiche les métadonnées d'un fichier.
+ * 
+ * Cette fonction affiche les métadonnées d'un fichier spécifique, notamment :
+ * - Le propriétaire du fichier
+ * - Le groupe associé
+ * - Les permissions
+ * - Le numéro d'inode 
+ * - Le nombre de liens
+ * - Les dates de création et modification
+ * - La taille du fichier en octets
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers contenant les informations des fichiers et des répertoires.
+ * @param filename Nom du fichier dont les métadonnées doivent être affichées.
+ * 
+ * @return 1 Si les métadonnées ont été affichées avec succès.
+ * @return 0 Si le fichier n'a pas été trouvé dans le système de fichiers.
+ */
 int show_file_metadata(Filesystem *fs, const char *filename) {
     char full_path[MAX_FILENAME * 2];
     snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, filename);
@@ -1067,7 +1520,18 @@ int show_file_metadata(Filesystem *fs, const char *filename) {
     return 0;
 }
 
-// Fonction pour afficher les métadonnées d'un fichier
+/**
+ * @brief Affiche les métadonnées d'un répertoire.
+ * 
+ * Cette fonction affiche les métadonnées d'un répertoire spécifique.
+ * Elle recherche le répertoire dans le système de fichiers et, si trouvé, affiche toutes ces informations.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers contenant les informations des répertoires et des fichiers.
+ * @param namerep Nom du répertoire dont les métadonnées doivent être affichées.
+ * 
+ * @return 1 Si les métadonnées ont été affichées avec succès.
+ * @return 0 Si le répertoire n'a pas été trouvé dans le système de fichiers.
+ */
 int show_directory_metadata(Filesystem *fs, const char *namerep) {
     char full_path[MAX_FILENAME * 2];
     snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, namerep);
@@ -1099,7 +1563,20 @@ int show_directory_metadata(Filesystem *fs, const char *namerep) {
     return 0;
 }
 
-// Fonction pour modifier les permissions d'un fichier
+/**
+ * @brief Modifie les permissions d'un fichier.
+ * 
+ * Cette fonction permet de modifier les permissions d'un fichier spécifié en fonction de la cible (propriétaire, groupe ou autres).
+ * Les permissions sont mises à jour en fonction de celles spécifiées.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers contenant les informations des fichiers.
+ * @param filename Nom du fichier dont les permissions doivent être modifiées.
+ * @param target La cible des permissions à modifier, pouvant être "-Owner", "-Group" ou "-Others".
+ * @param new_permissions Nouvelle chaîne de caractères de permissions à appliquer à la cible spécifiée.
+ * 
+ * @return 1 Si les permissions ont été mises à jour avec succès.
+ * @return 0 Si le fichier n'a pas été trouvé, si l'utilisateur n'est pas propriétaire, ou si une erreur s'est produite.
+ */
 int chmod_file(Filesystem *fs, const char *filename, const char *target, const char *new_permissions) {
     char full_path[MAX_FILENAME * 2];
     snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, filename);
@@ -1151,7 +1628,19 @@ int chmod_file(Filesystem *fs, const char *filename, const char *target, const c
     return 0;
 }
 
-// Fonction pour modifier les permissions d'un fichier
+/**
+ * @brief Modifie les permissions d'un répertoire.
+ * 
+ * Cette fonction permet de modifier les permissions d'un répertoire spécifié en fonction de la cible.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers contenant les informations des répertoires.
+ * @param repertoire_name Nom du répertoire dont les permissions doivent être modifiées.
+ * @param target La cible des permissions à modifier, pouvant être "-Owner", "-Group" ou "-Others".
+ * @param new_permissions Nouvelle chaîne de caractères de permissions (rwx) à appliquer à la cible spécifiée.
+ * 
+ * @return 1 Si les permissions ont été mises à jour avec succès.
+ * @return 0 Si le répertoire n'a pas été trouvé, si l'utilisateur n'est pas propriétaire ou membre du groupe, ou si une erreur s'est produite.
+ */
 int chmod_dir(Filesystem *fs, const char *repertoire_name, const char *target, const char *new_permissions) {
     char full_path[MAX_FILENAME * 2];
     snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, repertoire_name);
@@ -1202,7 +1691,14 @@ int chmod_dir(Filesystem *fs, const char *repertoire_name, const char *target, c
     return 0;
 }
 
-// Fonction pour allouer un bloc de données
+/**
+ * @brief Alloue un bloc de données libre.
+ * 
+ * Cette fonction parcourt la liste des blocs libres dans le superbloc et 
+ * alloue le premier bloc libre trouvé en le marquant comme occupé. 
+ * @return L'index du bloc alloué si un bloc libre est trouvé.
+ * @return 0 Si aucun bloc libre n'est disponible.
+ */
 int allocate_block() {
     for (int i = 0; i < NUM_BLOCKS; i++) {
         if (sb.free_blocks[i] == 1) { // 1 = libre
@@ -1213,7 +1709,13 @@ int allocate_block() {
     return 0; // Aucun bloc libre disponible
 }
 
-// Fonction pour compter les blocs libres
+/**
+ * @brief Compte le nombre de blocs libres.
+ * 
+ * Cette fonction parcourt la liste des blocs dans le superbloc et compte le nombre de blocs qui sont marqués comme libres
+ * 
+ * @return Le nombre de blocs libres disponibles.
+ */
 int count_free_blocks() {
     int count = 0;
     for (int i = 0; i < NUM_BLOCKS; i++) {
@@ -1224,7 +1726,18 @@ int count_free_blocks() {
     return count;
 }
 
-// Fonction récursive pour calculer la taille d'un répertoire (fichiers + sous-répertoires)
+/**
+ * @brief Calcule la taille totale d'un répertoire, y compris les fichiers et sous-répertoires de manière récursive.
+ * 
+ * Cette fonction calcule la taille totale d'un répertoire en parcourant tous les fichiers et sous-répertoires qu'il contient,
+ * y compris les sous-répertoires de manière récursive.
+ * 
+ * @param fs Pointeur vers le système de fichiers.
+ * @param dirpath Le chemin du répertoire dont la taille doit être calculée.
+ * 
+ * @return La taille totale du répertoire, en octets.
+ * 
+ */
 int calculate_directory_size_recursive(Filesystem *fs, const char *dirpath) {
     int total_size = 0;
     size_t dirpath_len = strlen(dirpath);
@@ -1249,7 +1762,18 @@ int calculate_directory_size_recursive(Filesystem *fs, const char *dirpath) {
     return total_size;
 }
 
-// Fonction pour écrire du contenu dans un fichier
+/**
+ * @brief Écrit du contenu dans un fichier.
+ * 
+ * Cette fonction permet d'écrire du contenu dans un fichier spécifique en vérifiant les permissions 
+ * d'écriture et en allouant les blocs nécessaires pour stocker le contenu. Elle met également à jour 
+ * la taille du fichier et la date de modification.
+ * 
+ * @param fs Le système de fichiers où se trouve le fichier.
+ * @param filename Le nom du fichier dans lequel écrire.
+ * @param content Le contenu à écrire dans le fichier.
+ * @return int Retourne 1 si l'écriture est réussie, sinon retourne 0.
+ */
 int write_to_file(Filesystem *fs, const char *filename, const char *content) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path[MAX_FILENAME * 2];
@@ -1329,7 +1853,17 @@ int write_to_file(Filesystem *fs, const char *filename, const char *content) {
     return 0;
 }
 
-// Fonction pour lire le contenu d'un fichier ||||||||
+/**
+ * @brief Lit le contenu d'un fichier.
+ * 
+ * Cette fonction permet de lire le contenu d'un fichier spécifié en vérifiant les permissions de 
+ * lecture pour l'utilisateur actuel. Elle affiche le contenu du fichier s'il existe.
+ * Si le fichier est vide ou introuvable, un message d'erreur est affiché.
+ * 
+ * @param fs Le système de fichiers où se trouve le fichier.
+ * @param filename Le nom du fichier à lire.
+ * @return int Retourne 1 si la lecture est réussie, sinon retourne 0.
+ */
 int read_file(Filesystem *fs, const char *filename) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path[MAX_FILENAME * 2];
@@ -1376,7 +1910,17 @@ int read_file(Filesystem *fs, const char *filename) {
     return 0;
 }
 
-// Fonction pour supprimer un fichier
+/**
+ * @brief Supprime un fichier du système de fichiers.
+ * 
+ * Cette fonction supprime un fichier spécifié en libérant les blocs de données associés, 
+ * puis déplace les inodes suivants pour combler l'espace laissé par le fichier supprimé. 
+ * Elle met ensuite à jour le système de fichiers.
+ * 
+ * @param fs Le système de fichiers où se trouve le fichier à supprimer.
+ * @param filename Le nom du fichier à supprimer.
+ * @return int Retourne 1 si le fichier a été supprimé avec succès, sinon retourne 0.
+ */
 int delete_file(Filesystem *fs, const char *filename) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path[MAX_FILENAME * 2];
@@ -1417,7 +1961,16 @@ int delete_file(Filesystem *fs, const char *filename) {
     return 0;
 }
 
-// Fonction pour vérifier si un répertoire existe
+/**
+ * @brief Vérifie si un répertoire existe dans le système de fichiers.
+ * 
+ * Cette fonction parcourt les inodes du système de fichiers pour vérifier si un répertoire 
+ * avec le chemin spécifié existe.
+ * 
+ * @param fs Le système de fichiers où le répertoire doit être recherché.
+ * @param path Le chemin du répertoire à vérifier.
+ * @return int Retourne 1 si le répertoire existe, sinon retourne 0.
+ */
 int directory_exists(Filesystem *fs, const char *path) {
     for (int i = 0; i < fs->inode_count; i++) {
         if (strcmp(fs->inodes[i].name, path) == 0 && fs->inodes[i].is_directory) {
@@ -1427,7 +1980,19 @@ int directory_exists(Filesystem *fs, const char *path) {
     return 0; // Le répertoire n'existe pas
 }
 
-// Fonction pour copier un fichier
+/**
+ * @brief Copie un fichier vers un autre emplacement ou répertoire.
+ * 
+ * Cette fonction permet de copier un fichier existant vers un nouveau fichier dans un répertoire spécifié.
+ * Elle vérifie si le fichier source existe, si le fichier de destination n'existe pas déjà,
+ * et crée une copie du fichier dans le répertoire de destination.
+ * 
+ * @param fs Le système de fichiers dans lequel l'opération est effectuée.
+ * @param file_name Le nom du fichier source à copier.
+ * @param link_name Le nom du fichier de destination.
+ * @param rep_name Le répertoire de destination, si NULL, le fichier est copié dans le répertoire courant.
+ * @return int Retourne 1 si la copie a réussi, sinon 0 en cas d'erreur.
+ */
 int copy_file(Filesystem *fs, const char *file_name, const char *link_name, const char *rep_name) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path_source[MAX_FILENAME * 2];
@@ -1539,7 +2104,19 @@ int copy_file(Filesystem *fs, const char *file_name, const char *link_name, cons
     return 1;
 }
 
-// Fonction pour déplacer un fichier
+/**
+ * @brief Déplace un fichier vers un autre répertoire.
+ * 
+ * Cette fonction permet de déplacer un fichier depuis son emplacement actuel vers un nouveau répertoire.
+ * Elle vérifie si le répertoire de destination existe et si le fichier source est valide. 
+ * Si tout est valide, elle copie les métadonnées et les blocs de données du fichier source vers le fichier de destination,
+ * puis supprime le fichier source du système de fichiers.
+ * 
+ * @param fs Le système de fichiers dans lequel l'opération est effectuée.
+ * @param filename Le nom du fichier à déplacer.
+ * @param rep_name Le répertoire de destination.
+ * @return int Retourne 1 si le déplacement a réussi, sinon 0 en cas d'erreur.
+ */
 int move_file(Filesystem *fs, const char *filename, const char *rep_name) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path_source[MAX_FILENAME * 2];
@@ -1638,7 +2215,15 @@ int move_file(Filesystem *fs, const char *filename, const char *rep_name) {
     return 1;
 }
 
-// Fonction pour extraire le chemin relatif
+/**
+ * @brief Extrait le chemin relatif à partir du chemin complet.
+ * 
+ * Cette fonction prend un chemin complet et retourne la partie relative du chemin en supprimant le préfixe "/home/".
+ * Si le chemin ne commence pas par "/home/", il est retourné tel quel.
+ * 
+ * @param full_path Le chemin complet.
+ * @return char* Le chemin relatif extrait.
+ */
 char* extract_path(const char* full_path) {
     const char* prefix = "/home/";
     size_t prefix_len = strlen(prefix);
@@ -1649,13 +2234,29 @@ char* extract_path(const char* full_path) {
     return (char*)full_path;
 }
 
-// Fonction pour extraire le chemin relatif
+/**
+ * @brief Extrait le dernier élément d'un chemin.
+ * 
+ * Cette fonction retourne le dernier élément d'un chemin de fichier.
+ * Si le chemin ne contient pas de '/', elle retourne le chemin entier.
+ * 
+ * @param full_path Le chemin complet.
+ * @return char* Le dernier élément du chemin.
+ */
 char* last_element(const char* full_path) {
     char* dernier = strrchr(full_path,'/');
     return (dernier !=NULL)? dernier +1 :  (char*)full_path;
 }
 
-// Fonction pour retirer le suffixe d'une chaîne de caractères
+/**
+ * @brief Retire le suffixe d'un chemin de fichier.
+ * 
+ * Cette fonction retire tout ce qui suit le dernier '/' dans le chemin, effectuant ainsi un retrait de suffixe.
+ * Par exemple, si le chemin est "/home/user/file.txt", elle renverra "/home/user".
+ * 
+ * @param str Le chemin dont on souhaite retirer le suffixe.
+ * @return char* Le chemin sans le suffixe.
+ */
 char *retirer_suffixe(char *str) {
     // Recherche du dernier '/' dans la chaîne
     char *pos = strrchr(str, '/');
@@ -1666,7 +2267,19 @@ char *retirer_suffixe(char *str) {
     return str;
 }
 
-// Fonction pour copier un répertoire et son contenu
+/**
+ * @brief Copie un répertoire et son contenu vers un répertoire de destination.
+ * 
+ * Cette fonction permet de copier récursivement un répertoire source et tout son 
+ * contenu vers un répertoire de destination. 
+ * 
+ * @param fs Pointeur vers le système de fichiers dans lequel la copie doit être effectuée.
+ * @param source_dir Chemin du répertoire source à copier.
+ * @param dest_name Nom du répertoire de destination à créer.
+ * @param dest_parent Chemin du répertoire parent de destination. Si NULL, la copie se fait dans le répertoire courant.
+ * 
+ * @return 1 si la copie réussit, 0 si une erreur se produit.
+ */
 int copy_repertoire(Filesystem *fs, const char *source_dir, const char *dest_name, const char *dest_parent) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_source_path[MAX_FILENAME * 2];
@@ -1793,7 +2406,21 @@ int copy_repertoire(Filesystem *fs, const char *source_dir, const char *dest_nam
     return 1;
 }
 
-// Fonction pour déplacer un repertoire
+/**
+ * @brief Déplace un répertoire vers un autre emplacement dans le système de fichiers.
+ * 
+ * Cette fonction permet de déplacer un répertoire source vers un répertoire de destination spécifié. 
+ * Elle prend en charge les chemins relatifs et absolus pour la destination.Elle vérifie d'abord 
+ * si le répertoire source existe, puis si la destination est valide. 
+ * Ensuite, elle met à jour les chemins de tous les fichiers et sous-répertoires
+ * présents dans le répertoire déplacé.
+ * 
+ * @param fs Pointeur vers le système de fichiers dans lequel le répertoire doit être déplacé.
+ * @param repertoirename Nom du répertoire à déplacer.
+ * @param rep_name Chemin du répertoire de destination. Ce chemin peut être relatif ou absolu.
+ * 
+ * @return 1 si le déplacement réussit, 0 si une erreur se produit
+ */
 int move_directory(Filesystem *fs, const char *repertoirename, const char *rep_name) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     // Chemins complets pour le répertoire source et de destination
@@ -1874,7 +2501,19 @@ int move_directory(Filesystem *fs, const char *repertoirename, const char *rep_n
     return 1;
 }
 
-// Fonction rénommer un fichier
+/**
+ * @brief Renomme un fichier dans le système de fichiers.
+ * 
+ * Cette fonction permet de renommer un fichier source en un nouveau nom de fichier (destination) dans le même répertoire.
+ * La fonction vérifie d'abord si le fichier source existe et s'il est valide. Ensuite, elle vérifie si le fichier 
+ * de destination existe déjà. Si ce n'est pas le cas, elle met à jour le nom du fichier dans le système de fichiers.
+ * 
+ * @param fs Pointeur vers le système de fichiers dans lequel le fichier doit être renommé.
+ * @param file_name Nom actuel du fichier à renommer.
+ * @param link_name Nouveau nom du fichier.
+ * 
+ * @return 1 si le renommage réussit, 0 si une erreur se produit. 
+ */
 int rename_file(Filesystem *fs, const char *file_name, const char *link_name) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path_source[MAX_FILENAME * 2];
@@ -1916,7 +2555,20 @@ int rename_file(Filesystem *fs, const char *file_name, const char *link_name) {
     return 1;
 }
 
-// Fonction rénommer un répertoire
+/**
+ * @brief Renomme un répertoire dans le système de fichiers.
+ * 
+ * Cette fonction permet de changer le nom d'un répertoire existant dans le système de fichiers.
+ * Elle vérifie d'abord si le répertoire source existe et si le nouveau nom n'est pas déjà utilisé 
+ * par un autre répertoire avant de procéder au renommage.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers.
+ * @param repnamedepart Nom du répertoire à renommer.
+ * @param repnamefinal Nouveau nom à donner au répertoire.
+ * 
+ * @return 1 Si le renommage a réussi.
+ * @return 0 Si le répertoire source n'existe pas ou si le nom de destination est déjà utilisé.
+ */
 int rename_directory(Filesystem *fs, const char *repnamedepart, const char *repnamefinal) {
     pthread_mutex_lock(&fs_mutex); // Verrouiller le mutex pour la synchronisation
     char full_path_source[MAX_FILENAME * 2];
@@ -1958,7 +2610,11 @@ int rename_directory(Filesystem *fs, const char *repnamedepart, const char *repn
     return 1;
 }
 
-// Fonction pour effacer l'écran
+/**
+ * @brief Efface l'écran de la console.
+ * 
+ * Cette fonction efface l'écran de la console en fonction du système d'exploitation utilisé.  
+ */
 void clear_screen() {
     #ifdef _WIN32
         system("cls"); // Pour Windows
@@ -1967,7 +2623,14 @@ void clear_screen() {
     #endif
 }
 
-// Fonction pour lister le contenu du répertoire avec leur métadonnées 
+/**
+ * @brief Liste le contenu d'un répertoire avec ses métadonnées.
+ * 
+ * Cette fonction affiche les informations sur les fichiers et répertoires présents dans le répertoire courant du système de fichiers.
+ * @param fs Le système de fichiers contenant les inodes à lister.
+ * 
+ * @return 1 Si des éléments ont été trouvés et listés, sinon 0 si le répertoire est vide. 
+ */
 int list_all_directory(Filesystem *fs) {
     printf("Contenu de '%s':\n", fs->current_directory);
 
@@ -2014,7 +2677,15 @@ int list_all_directory(Filesystem *fs) {
     return 0;
 }
 
-// Fonction pour afficher l'utilisateur actuel
+/**
+ * @brief Affiche les groupes auxquels l'utilisateur actuel appartient.
+ * 
+ * Cette fonction affiche la liste des groupes associés à l'utilisateur courant.
+ *
+ * @param fs Le système de fichiers contenant la table des groupes et des utilisateurs.
+ * 
+ * @return 1 Si les groupes de l'utilisateur ont été trouvés et affichés, sinon 0 si l'utilisateur est introuvable ou n'a aucun groupe. 
+ */
 int list_user_groups(Filesystem *fs) {
     printf("Groupes de l'utilisateur '%s':\n", current_own);
     
@@ -2046,7 +2717,15 @@ int list_user_groups(Filesystem *fs) {
     return 1;
 }
 
-// Fonction pour changer de groupe
+/**
+ * @brief Change le groupe actuel de l'utilisateur.
+ * 
+ * Cette fonction permet de changer le groupe actuel de l'utilisateur en vérifiant si le groupe existe
+ * pour l'utilisateur dans la table des groupes.
+ * 
+ * @param fs Le système de fichiers contenant la table des groupes et des utilisateurs.
+ * @param groupname Le nom du groupe auquel l'utilisateur souhaite changer.
+ */
 int change_group(Filesystem *fs, const char *groupname) {
     // Vérifier si le groupe est vide
     if (groupname == NULL || strlen(groupname) == 0) {
@@ -2090,7 +2769,13 @@ int change_group(Filesystem *fs, const char *groupname) {
     return 1;
 }
 
-// Fonction pour afficher le groupe actuel
+/**
+ * @brief Affiche le groupe actuel de l'utilisateur.
+ * 
+ * Cette fonction permet d'afficher le groupe actuellement sélectionné pour l'utilisateur.
+ * 
+ * @return 1 Si un groupe est actuellement sélectionné et affiché, sinon 0 si aucun groupe n'est sélectionné.
+ */
 int show_current_group() {
     if (strlen(current_group) == 0) {
         printf("Aucun groupe n'est actuellement sélectionné.\n");
@@ -2101,7 +2786,18 @@ int show_current_group() {
     }
 }
 
-// Fonction pour supprimer uniquement son propre compte (même en sudo)
+/**
+ * @brief Supprime le compte utilisateur actuel.
+ * 
+ * Cette fonction permet à un utilisateur de supprimer uniquement son propre compte. Si l'utilisateur tente
+ * de supprimer un autre compte, une erreur sera retournée. La fonction supprime également le répertoire
+ * personnel associé à l'utilisateur et déconnecte l'utilisateur de la session.
+ * 
+ * @param fs Pointeur vers le système de fichiers.
+ * @param username Le nom de l'utilisateur à supprimer.
+ * 
+ * @return 1 Si le compte est supprimé avec succès, sinon 0 si une erreur se produit.
+ */
 int delete_user_account(Filesystem *fs, const char *username) {
     // Vérifier si l'utilisateur actuel correspond au compte à supprimer
     if (strcmp(current_own, username) != 0) {
@@ -2152,7 +2848,17 @@ int delete_user_account(Filesystem *fs, const char *username) {
     return 1;
 }
 
-// Fonction pour réinitialise le répertoire de travail d'un utilisateur (supprime tout sauf son dossier home)
+/**
+ * @brief Réinitialise le répertoire de travail d'un utilisateur, en conservant seulement son dossier home.
+ * 
+ * Cette fonction parcourt tous les fichiers et répertoires associés à un utilisateur et les supprime, à l'exception
+ * de son dossier home.
+ * 
+ * @param fs Pointeur vers le système de fichiers.
+ * @param username Le nom de l'utilisateur dont l'espace de travail doit être réinitialisé.
+ * 
+ * @return 1 Si la réinitialisation est réussie, sinon 0 si une erreur se produit.
+ */
 int reset_user_workspace(Filesystem *fs, const char *username) {
     // Vérifier si l'utilisateur existe
     int user_exists = 0;
@@ -2194,7 +2900,17 @@ int reset_user_workspace(Filesystem *fs, const char *username) {
     return 1;
 }
 
-// Fonction pour afficher le mot de passe de l'utilisateur actuel
+/**
+ * @brief Affiche le mot de passe de l'utilisateur actuel.
+ * 
+ * Cette fonction permet d'afficher le mot de passe de l'utilisateur actuellement connecté. 
+ * Elle recherche l'utilisateur dans la table des groupes et affiche le mot de passe associé.
+ * 
+ * @param fs Pointeur vers le système de fichiers.
+ * 
+ * @return 1 Si l'utilisateur est trouvé et que le mot de passe est affiché avec succès,
+ *         0 Si l'utilisateur n'est pas trouvé dans la table des groupes.
+ */
 int show_password(Filesystem *fs) {
     // Trouver l'utilisateur dans la table des groupes
     for (int i = 0; i < NUM_USER; i++) {
@@ -2207,7 +2923,17 @@ int show_password(Filesystem *fs) {
     return 0;
 }
 
-// Fonction pour modifier le mot de passe de l'utilisateur actuel
+/**
+ * @brief Modifie le mot de passe de l'utilisateur actuel.
+ * 
+ * Cette fonction permet à l'utilisateur actuel de changer son mot de passe. Elle demande à l'utilisateur 
+ * de saisir son mot de passe actuel, puis un nouveau mot de passe.
+ * 
+ * @param fs Pointeur vers le système de fichiers pour accéder aux données de l'utilisateur et pour sauvegarder les changements.
+ * 
+ * @return 1 Si le mot de passe a été modifié avec succès, 
+ *         0 Si le mot de passe actuel est incorrect.
+ */
 int change_password(Filesystem *fs) {
     char current_password[MAX_PASSWORD];
     char new_password[MAX_PASSWORD];
@@ -2261,7 +2987,18 @@ int change_password(Filesystem *fs) {
     return 0;
 }
 
-// Fonction pour vérifier le mot de passe
+/**
+ * @brief Vérifie si le mot de passe fourni correspond à celui de l'utilisateur actuel.
+ * 
+ * Cette fonction compare le mot de passe fourni avec celui stocké dans la table des utilisateurs 
+ * pour l'utilisateur actuel.
+ * 
+ * @param fs Pointeur vers le système de fichiers pour accéder aux données de l'utilisateur.
+ * @param password Le mot de passe à vérifier.
+ * 
+ * @return 1 Si le mot de passe correspond à celui de l'utilisateur actuel, 
+ *         0 Si le mot de passe ne correspond pas ou est invalide.
+ */
 int verify_password(Filesystem *fs, const char *password) {
     // Vérifier si le mot de passe est NULL ou vide
     if (password == NULL || strlen(password) == 0) {
@@ -2283,7 +3020,19 @@ int verify_password(Filesystem *fs, const char *password) {
     return 0;
 }
 
-// Fonction pour vérifier le mot de passe sudo
+/**
+ * @brief Vérifie le mot de passe de l'utilisateur pour une commande sudo.
+ * 
+ * Cette fonction demande à l'utilisateur de saisir son mot de passe et vérifie si celui-ci 
+ * correspond au mot de passe stocké. Elle est utilisée pour valider l'accès à des commandes 
+ * nécessitant des privilèges d'administrateur (sudo).
+ * 
+ * @param fs Pointeur vers le système de fichiers pour accéder aux données de l'utilisateur.
+ * @param current_own Le nom de l'utilisateur pour lequel le mot de passe est vérifié.
+ * 
+ * @return 1 Si le mot de passe est correct, 
+ *         0 Si le mot de passe est incorrect.
+ */
 int verify_sudo_password(Filesystem* fs, const char* current_own) {
     printf("[sudo] Mot de passe pour %s: ", current_own);
     char password[MAX_PASSWORD];
@@ -2298,7 +3047,18 @@ int verify_sudo_password(Filesystem* fs, const char* current_own) {
     return 1;
 }
 
-// Fonction pour vérifier si l'utilisateur est un administrateur
+/**
+ * @brief Vérifie si un utilisateur est un administrateur.
+ * 
+ * Cette fonction parcourt la table des utilisateurs pour vérifier si l'utilisateur spécifié 
+ * possède les privilèges d'administrateur.
+ * 
+ * @param fs Pointeur vers le système de fichiers pour accéder aux données des utilisateurs.
+ * @param username Le nom de l'utilisateur à vérifier.
+ * 
+ * @return 1 Si l'utilisateur est administrateur, 
+ *         0 Si l'utilisateur n'est pas administrateur ou n'existe pas.
+ */
 int is_user_admin(Filesystem *fs, const char *username) {
     // Parcourir la table des utilisateurs
     for (int i = 0; i < NUM_USER; i++) {
@@ -2312,7 +3072,16 @@ int is_user_admin(Filesystem *fs, const char *username) {
     return 0;
 }
 
-// Fonction pour vérifier si l'utilisateur est un super administrateur
+/**
+ * @brief Vérifie si un utilisateur est un super administrateur.
+ * 
+ * Cette fonction vérifie si l'utilisateur spécifié est un super administrateur (root).
+ * @param fs Pointeur vers le système de fichiers pour accéder aux données des utilisateurs.
+ * @param username Le nom de l'utilisateur à vérifier.
+ * 
+ * @return 1 Si l'utilisateur est un super administrateur (root), 
+ *         0 Si l'utilisateur n'est pas super administrateur, ou si le mot de passe est incorrect.
+ */
 int is_user_superadmin(Filesystem *fs, const char *username) {
 
     // Vérifier si l'utilisateur actuel est root et que le mot de passe est correct
@@ -2354,7 +3123,19 @@ int is_user_superadmin(Filesystem *fs, const char *username) {
     return 0;
 }
 
-// Fonction pour ajouter un utilisateur à un groupe existant
+/**
+ * @brief Ajoute un utilisateur à un groupe existant.
+ * 
+ * Cette fonction permet d'ajouter un utilisateur spécifié à un groupe existant
+ *  Les droits peuvent être accordés au propriétaire du groupe ou à un utilisateur ayant des privilèges sudo. 
+ * 
+ * @param fs Pointeur vers le système de fichiers pour accéder aux informations des utilisateurs et des groupes.
+ * @param username Le nom de l'utilisateur à ajouter au groupe.
+ * @param groupname Le nom du groupe auquel l'utilisateur doit être ajouté.
+ * 
+ * @return 1 Si l'utilisateur a été ajouté avec succès au groupe.
+ * @return 0 Si une erreur se produit.
+ */
 int add_user_to_group(Filesystem *fs, const char *username, const char *groupname) {
     // Vérifications de base
     if (username == NULL || groupname == NULL || strlen(username) == 0 || strlen(groupname) == 0) {
@@ -2436,7 +3217,17 @@ int add_user_to_group(Filesystem *fs, const char *username, const char *groupnam
     return 0; // Si aucune des conditions n'est remplie, retourner 0
 }
 
-// Fonction pour afficher les membres d'un groupe
+/**
+ * @brief Affiche les membres d'un groupe.
+ * 
+ * Cette fonction permet d'afficher les membres d'un groupe spécifique.
+ *
+ * @param fs Pointeur vers le système de fichiers pour accéder aux informations des utilisateurs et des groupes.
+ * @param groupname Le nom du groupe dont les membres doivent être affichés.
+ * 
+ * @return 1 Si des membres ont été trouvés et affichés.
+ * @return 0 Si le groupe n'existe pas ou si aucun membre n'est trouvé dans le groupe.
+ */
 int list_group_members(Filesystem *fs, const char *groupname) {
     // Vérifications de base
     if (groupname == NULL || strlen(groupname) == 0) {
@@ -2495,7 +3286,19 @@ int list_group_members(Filesystem *fs, const char *groupname) {
     return 0; // Si aucune des conditions n'est remplie, retourner 0
 }
 
-// Fonction pour afficher les informations d'un utilisateur
+/**
+ * @brief Affiche les informations d'un utilisateur.
+ * 
+ * Cette fonction permet d'afficher les informations d'un utilisateur spécifique. 
+ * Elle vérifie si l'utilisateur existe, puis affiche les informations suivantes 
+ * selon les droits de l'utilisateur courant.
+ *
+ * @param fs Pointeur vers le système de fichiers pour accéder aux informations des utilisateurs.
+ * @param utilisateur Le nom de l'utilisateur dont les informations doivent être affichées.
+ * 
+ * @return 1 Si l'utilisateur est trouvé et que ses informations sont affichées.
+ * @return 0 Si l'utilisateur n'est pas trouvé.
+ */
 int show_user_info(Filesystem *fs,const char *utilisateur) {
     if (utilisateur == NULL) {
         printf("Erreur : utilisateur non trouvé.\n");
@@ -2549,7 +3352,18 @@ int show_user_info(Filesystem *fs,const char *utilisateur) {
     return 1;
 }
 
-// Fonction pour retirer un utilisateur d'un groupe
+/**
+ * @brief Retirer un utilisateur d'un groupe existant.
+ * 
+ * Cette fonction permet de retirer un utilisateur d'un groupe spécifique.
+ * 
+ * @param fs Pointeur vers le système de fichiers pour accéder aux informations des utilisateurs et des groupes.
+ * @param username Le nom de l'utilisateur à retirer du groupe.
+ * @param groupname Le nom du groupe duquel l'utilisateur doit être retiré.
+ * 
+ * @return 1 Si l'utilisateur a été retiré du groupe avec succès.
+ * @return 0 Si une erreur est survenue.
+ */
 int remove_user_from_group(Filesystem *fs, const char *username, const char *groupname) {
     // Vérifications de base
     if (username == NULL || groupname == NULL || strlen(username) == 0 || strlen(groupname) == 0) {
@@ -2642,7 +3456,17 @@ int remove_user_from_group(Filesystem *fs, const char *username, const char *gro
     return 1;
 }
 
-// Fonction pour promouvoir un utilisateur au rôle d'admin
+/**
+ * @brief Promouvoir un utilisateur au rôle d'administrateur.
+ * 
+ * Cette fonction permet à un utilisateur "root" de promouvoir un autre utilisateur au rôle d'administrateur
+ * 
+ * @param fs Pointeur vers le système de fichiers pour accéder aux informations des utilisateurs.
+ * @param username Le nom de l'utilisateur à promouvoir au rôle d'administrateur.
+ * 
+ * @return 1 Si l'utilisateur a été promu avec succès au rôle d'administrateur.
+ * @return 0 Si une erreur est survenue.
+ */
 int promote_to_admin(Filesystem *fs, const char *username) {
     // Vérifier si l'utilisateur actuel est root et que le mot de passe est correct
     int root_index = -1;
@@ -2685,7 +3509,17 @@ int promote_to_admin(Filesystem *fs, const char *username) {
     return 0; // Si aucune des conditions n'est remplie, retourner 0
 }
 
-// Fonction pour retirer le rôle d'admin d'un utilisateur
+/**
+ * @brief Retirer à un utilisateur son rôle d'administrateur.
+ * 
+ * Cette fonction permet à un utilisateur "root" de retirer à un autre utilisateur son rôle d'administrateur.
+ * 
+ * @param fs Pointeur vers le système de fichiers pour accéder aux informations des utilisateurs.
+ * @param username Le nom de l'utilisateur dont le rôle d'administrateur doit être retiré.
+ * 
+ * @return 1 Si le rôle d'administrateur a été retiré avec succès.
+ * @return 0 Si une erreur est survenue.
+ */
 int demote_from_admin(Filesystem *fs, const char *username) {
     // Vérifier si l'utilisateur actuel est root
     int root_index = -1;
@@ -2729,7 +3563,18 @@ int demote_from_admin(Filesystem *fs, const char *username) {
     return 0; // Si aucune des conditions n'est remplie, retourner 0
 }
 
-// Fonction pour enregistrer une trace d'exécution dans le fichier trace_execution.txt
+/**
+ * @brief Enregistre une trace d'exécution dans le fichier de trace `trace_execution.txt`.
+ * 
+ * Cette fonction permet d'enregistrer une trace d'exécution à chaque fois qu'une commande est exécutée. 
+ * La trace comprend la date et l'heure de l'exécution, le nom de l'utilisateur et de son groupe, le rôle de l'utilisateur, le succès de la commande, et la commande exécutée.
+ * 
+ * @param fs Le système de fichiers pour récupérer les informations sur les groupes et les utilisateurs.
+ * @param current_own Le nom de l'utilisateur actuel ayant exécuté la commande.
+ * @param current_group Le groupe auquel appartient l'utilisateur actuel.
+ * @param command La commande exécutée par l'utilisateur.
+ * @param success Indicateur de succès de la commande. 
+ */ 
 void save_trace_execution(Filesystem *fs, const char *current_own, const char *current_group,const char *command, char success) {
     FILE *trace_file = fopen(TRACE_FILE, "a"); // Ouvrir le fichier en mode "append"
     
@@ -2763,7 +3608,18 @@ void save_trace_execution(Filesystem *fs, const char *current_own, const char *c
     fclose(trace_file);
 }
 
-// Fonction pour lire le fichier de trace et filtrer selon les droits d'accès de l'utilisateur
+/**
+ * @brief Lit le fichier de trace et filtre les lignes selon les droits d'accès de l'utilisateur.
+ * 
+ * Cette fonction permet de lire le fichier de trace d'exécution et d'afficher les lignes correspondant à un utilisateur spécifique, en fonction de ses droits d'accès. 
+ * Si l'utilisateur est un superadmin, il peut choisir d'afficher toutes les lignes du fichier de trace. 
+ * Sinon, seules les lignes correspondant à l'utilisateur actuel seront affichées.
+ * 
+ * @param fs Le système de fichiers dans lequel l'utilisateur est vérifié.
+ * @param current_own Le nom de l'utilisateur actuel dont les lignes de trace doivent être affichées.
+ * 
+ * @return 1 si le fichier de trace a été correctement lu et filtré, 0 en cas d'erreur d'ouverture du fichier. 
+ */
 int  read_trace_by_user(Filesystem *fs, const char *current_own) {
     FILE *trace_file = fopen(TRACE_FILE, "r"); // Ouvrir le fichier en mode lecture
 
@@ -2817,7 +3673,17 @@ int  read_trace_by_user(Filesystem *fs, const char *current_own) {
     return 1;
 }
 
-// Fonction pour obtenir un inode par son nom
+/**
+ * @brief Obtient un inode à partir de son nom de fichier.
+ * 
+ * Cette fonction permet de rechercher et d'obtenir un inode correspondant à un fichier ou répertoire donné, en fonction de son nom.
+ * Elle construit d'abord le chemin complet du fichier en utilisant le répertoire courant et le nom du fichier, puis parcourt les inodes du système de fichiers pour trouver celui qui correspond à ce chemin.
+ * 
+ * @param fs Le système de fichiers dans lequel les inodes sont stockés.
+ * @param filename Le nom du fichier ou répertoire dont l'inode doit être récupéré.
+ * 
+ * @return Un pointeur vers l'inode correspondant au fichier, ou NULL si le fichier n'est pas trouvé. 
+ */
 Inode* get_inode_by_name(Filesystem *fs, const char *filename) {
     char full_path[MAX_FILENAME * 2];
     snprintf(full_path, sizeof(full_path), "%s/%s", fs->current_directory, filename);
@@ -2834,7 +3700,17 @@ Inode* get_inode_by_name(Filesystem *fs, const char *filename) {
     return NULL;
 }
 
-// Fonction pour trouver le fichier de base d'un lien symbolique
+/**
+ * @brief Trouve le fichier original pointé par un lien symbolique.
+ *
+ * Cette fonction parcourt le système de fichiers pour trouver le fichier original qui possède
+ * le lien symbolique donné en paramètre. Un lien symbolique est un pointeur vers un autre fichier.
+ *
+ * @param fs            Pointeur vers la structure Filesystem contenant les inodes.
+ * @param symb_link     Nom du lien symbolique à rechercher (peut être un chemin relatif).
+ *
+ * @return              - Pointeur vers le nom du fichier original si trouvé.
+ */
 char* get_symbolic_link_target(Filesystem *fs, const char *symb_link) {
     // Construire le chemin complet du lien symbolique
     char full_link_path[MAX_FILENAME * 2];
@@ -2861,7 +3737,17 @@ char* get_symbolic_link_target(Filesystem *fs, const char *symb_link) {
     return NULL;
 }
 
-// Fonction pour trouver le fichier original d'un hardlink
+/**
+ * @brief Trouve le fichier original associé à un hardlink.
+ *
+ * Un hardlink est une entrée supplémentaire pointant vers le même inode qu'un fichier existant.
+ * Cette fonction identifie le fichier source d'un hardlink donné.
+ *
+ * @param fs            Pointeur vers la structure Filesystem contenant les inodes.
+ * @param hard_link     Nom du hardlink à analyser (peut être un chemin relatif).
+ *
+ * @return              - Pointeur vers le nom du fichier original si trouvé.
+ */
 char* get_hardlink_original(Filesystem *fs, const char *hard_link) {
     // Construire le chemin complet du hardlink
     char full_link_path[MAX_FILENAME * 2];
@@ -2904,7 +3790,19 @@ char* get_hardlink_original(Filesystem *fs, const char *hard_link) {
     return NULL;
 }
 
-// Fonction pour créer un lien symbolique
+/**
+ * @brief Crée un lien symbolique pointant vers un fichier.
+ * 
+ * Cette fonction permet de créer un lien symbolique qui pointe vers un fichier existant dans le système de fichiers.
+ * Il peut être créé dans un répertoire spécifié et vérifie plusieurs conditions avant de procéder à la création, comme la vérification de l'existence et permissions du fichier source.
+ * 
+ * @param fs Le système de fichiers dans lequel le lien symbolique doit être créé.
+ * @param file_name Le nom du fichier cible auquel le lien symbolique doit pointer.
+ * @param link_name Le nom du lien symbolique à créer.
+ * @param rep_name Le répertoire dans lequel le lien symbolique doit être créé. Si NULL, le lien sera créé dans le répertoire courant.
+ * 
+ * @return 1 si le lien symbolique a été créé avec succès, 0 en cas d'erreur. 
+ */
 int create_symbolic_link(Filesystem *fs, const char *file_name, const char *link_name,  const char *rep_name) {
     // Vérifier si on a atteint le nombre maximal de fichiers
     if (fs->inode_count >= MAX_FILES) {
@@ -3034,7 +3932,16 @@ int create_symbolic_link(Filesystem *fs, const char *file_name, const char *link
     return 1;
 }
 
-//Fonction pour lire un lien symbolique
+/**
+ * @brief Lit le fichier pointé par un lien symbolique.
+ * 
+ * Cette fonction permet de lire le contenu du fichier auquel un lien symbolique fait référence.
+ * 
+ * @param fs Le système de fichiers dans lequel le lien symbolique est localisé.
+ * @param link_name Le nom du lien symbolique à lire.
+ * 
+ * @return 1 si la lecture est réussie, 0 si une erreur survient.
+ */
 int read_symbolic_link(Filesystem *fs, const char *link_name) {
     // Vérifier si le lien symbolique existe
     Inode *link_inode = get_inode_by_name(fs, link_name);
@@ -3074,7 +3981,16 @@ int read_symbolic_link(Filesystem *fs, const char *link_name) {
     return 0; // Si aucune des conditions n'est remplie, retourner 0
 }
 
-// Fonction pour supprimer un lien symbolique
+/**
+ * @brief Supprime un lien symbolique du système de fichiers.
+ * 
+ * Cette fonction permet de supprimer un lien symbolique du système de fichiers. Si le lien symbolique est trouvé, il est supprimé et les métadonnées correspondantes sont mises à jour.
+ * 
+ * @param fs Le système de fichiers dans lequel le lien symbolique doit être supprimé.
+ * @param link_name Le nom du lien symbolique à supprimer.
+ * 
+ * @return 1 si la suppression est réussie, 0.
+ */
 int delete_symbolic_link(Filesystem *fs, const char *link_name) {
     // Vérifier si le lien symbolique existe
     Inode *link_inode = get_inode_by_name(fs, link_name);
@@ -3106,7 +4022,17 @@ int delete_symbolic_link(Filesystem *fs, const char *link_name) {
     return 1;
 }
 
-// Fonction pour écrire dépuis un lien symbolique
+/**
+ * @brief Écrit des données dans le fichier pointé par un lien symbolique.
+ * 
+ * Cette fonction permet d'écrire des données dans le fichier auquel le lien symbolique fait référence.
+ * 
+ * @param fs Le système de fichiers dans lequel le lien symbolique est présent.
+ * @param link_name Le nom du lien symbolique vers lequel les données doivent être écrites.
+ * @param data Les données à écrire dans le fichier pointé par le lien symbolique.
+ * 
+ * @return 1 si l'écriture est réussie, 0 si une erreur survient. 
+ */ 
 int write_symbolic_link(Filesystem *fs, const char *link_name, const char *data) {
     // Vérifier si le lien symbolique existe
     Inode *link_inode = get_inode_by_name(fs, link_name);
@@ -3131,7 +4057,17 @@ int write_symbolic_link(Filesystem *fs, const char *link_name, const char *data)
     return 0; // Si aucune des conditions n'est remplie, retourner 0
 }
 
-// Fonction pour déplacer un lien symbolique
+/**
+ * @brief Déplace un lien symbolique vers un autre répertoire.
+ * 
+ * Cette fonction permet de déplacer un lien symbolique d'un répertoire à un autre, soit en spécifiant un chemin absolu, soit un chemin relatif.
+ * 
+ * @param fs Le système de fichiers où le lien symbolique doit être déplacé.
+ * @param linkname Le nom du lien symbolique à déplacer.
+ * @param rep_name Le répertoire cible où déplacer le lien symbolique. Cela peut être un chemin absolu ou relatif.
+ * 
+ * @return 1 si le déplacement a été effectué avec succès, 0 si une erreur se produit. 
+ */
 int move_symbolic_link(Filesystem *fs, const char *linkname, const char *rep_name) {
     char full_path_source[MAX_FILENAME * 2];
     char full_link_path[MAX_FILENAME * 2];
@@ -3215,7 +4151,16 @@ int move_symbolic_link(Filesystem *fs, const char *linkname, const char *rep_nam
     return 1;
 }
 
-// Fonction pour afficher les métadonnées d'un lien symbolique
+/**
+ * @brief Affiche les métadonnées d'un lien symbolique.
+ * 
+ * Cette fonction affiche les informations détaillées concernant un lien symbolique dans le système de fichiers.
+ * 
+ * @param fs Le système de fichiers dans lequel chercher le lien symbolique.
+ * @param link_name Le nom du lien symbolique dont les métadonnées doivent être affichées.
+ * 
+ * @return 1 si les métadonnées ont été affichées avec succès, 0 si le lien symbolique est introuvable ou s'il y a une erreur. 
+ */
 int show_symbolic_link_metadata(Filesystem *fs, const char *link_name) {
     // Vérifier si le lien symbolique existe
     Inode *link_inode = get_inode_by_name(fs, last_element(link_name));
@@ -3255,7 +4200,20 @@ int show_symbolic_link_metadata(Filesystem *fs, const char *link_name) {
     return 1;
 }
 
-// Fonction pour créer un lien matériel
+/**
+ * @brief Crée un lien matériel (hard link) vers un fichier existant.
+ * 
+ * Un lien matériel est une entrée supplémentaire dans le système de fichiers qui pointe
+ * vers le même inode qu'un fichier existant. Contrairement aux liens symboliques,
+ * les liens matériels ne sont pas des fichiers séparés mais partagent les mêmes données.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers
+ * @param file_name Nom du fichier source (original)
+ * @param link_name Nom à donner au nouveau lien matériel
+ * @param rep_name Répertoire de destination (peut être NULL pour le répertoire courant)
+ * 
+ * @return 1 si la création a réussi, 0 en cas d'échec
+ */
 int create_hard_link(Filesystem *fs, const char *file_name, const char *link_name, const char *rep_name) {
     // Vérifier si on a atteint le nombre maximal de fichiers
     if (fs->inode_count >= MAX_FILES) {
@@ -3385,7 +4343,17 @@ int create_hard_link(Filesystem *fs, const char *file_name, const char *link_nam
     return 1;
 }
 
-// Fonction pour lire via un lien matériel
+/**
+ * @brief Lit le contenu d'un fichier via un lien matériel
+ * 
+ * Comme un lien matériel pointe directement vers les données du fichier original,
+ * on peut simplement utiliser la fonction standard de lecture.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers
+ * @param link_name Nom du lien matériel à lire
+ * 
+ * @return Résultat de la lecture (1 = succès, 0 = échec)
+ */
 int read_hard_link(Filesystem *fs, const char *link_name) {
     
     // Pour un lien matériel, on peut simplement appeler read_file
@@ -3393,7 +4361,19 @@ int read_hard_link(Filesystem *fs, const char *link_name) {
     return read_file(fs, link_name);
 }
 
-// Fonction pour écrire via un lien matériel
+/**
+ * @brief Écrit du contenu dans un fichier via son lien matériel
+ * 
+ * Cette fonction permet d'écrire du contenu dans un fichier en passant par un de ses liens matériels.
+ * Comme les liens matériels partagent le même inode que le fichier original, l'écriture se fait
+ * directement dans le fichier source.
+ *
+ * @param fs Pointeur vers la structure du système de fichiers
+ * @param link_name Nom du lien matériel à utiliser
+ * @param content Contenu à écrire dans le fichier
+ * 
+ * @return 1 si l'écriture a réussi, 0 en cas d'échec
+ */
 int write_hard_link(Filesystem *fs, const char *link_name, const char *content) {
     // Vérifier si le lien symbolique existe
     Inode *link_inode = get_inode_by_name(fs, link_name);
@@ -3411,7 +4391,17 @@ int write_hard_link(Filesystem *fs, const char *link_name, const char *content) 
     return 1;
 }
 
-// Nouvelle fonction pour supprimer un lien matériel
+/**
+ * @brief Supprime un lien matériel du système de fichiers
+ * 
+ * Cette fonction supprime un lien matériel existant. Contrairement à la suppression d'un fichier,
+ * cela ne supprime pas les données tant qu'il reste d'autres liens vers le même inode.
+ *
+ * @param fs Pointeur vers la structure du système de fichiers
+ * @param link_name Nom du lien matériel à supprimer
+ * 
+ * @return 1 si la suppression a réussi, 0 en cas d'échec
+ */
 int delete_hard_link(Filesystem *fs, const char *link_name) {
 
     // Vérifier si le lien matériel existe
@@ -3444,7 +4434,20 @@ int delete_hard_link(Filesystem *fs, const char *link_name) {
     return 1;
 }
 
-// Fonction pour déplacer un lien matériel
+/**
+ * @brief Déplace un lien matériel vers un nouveau répertoire
+ * 
+ * Cette fonction permet de déplacer un lien matériel existant vers un autre répertoire
+ * tout en conservant sa relation avec le fichier original. Le déplacement crée une nouvelle
+ * entrée de lien matériel et supprime l'ancienne.
+ *
+ * @param fs Pointeur vers la structure du système de fichiers
+ * @param link_name Nom du lien matériel à déplacer
+ * @param rep_name Répertoire de destination (peut être relatif ou absolu)
+ * 
+ * @return 1 si le déplacement a réussi, 0 en cas d'échec
+ * @note Le numéro d'inode est conservé pour maintenir le lien avec le fichier original
+ */
 int move_hard_link(Filesystem *fs, const char *link_name, const char *rep_name) {
     char full_path_source[MAX_FILENAME * 2];
     char full_link_path[MAX_FILENAME * 2+1];
@@ -3544,7 +4547,20 @@ int move_hard_link(Filesystem *fs, const char *link_name, const char *rep_name) 
     return 1;
 }
 
-// Fonction pour afficher les métadonnées d'un lien matériel
+/**
+ * @brief Affiche les métadonnées d'un lien matériel
+ * 
+ * Cette fonction affiche les informations détaillées d'un lien matériel :
+ * - Nom et taille
+ * - Fichier original pointé
+ * - Propriétaire et permissions
+ * - Dates de création et modification
+ *
+ * @param fs Pointeur vers la structure du système de fichiers
+ * @param link_name Nom du lien matériel à inspecter
+ * 
+ * @return 1 si l'affichage a réussi, 0 en cas d'échec
+ */
 int show_hard_link_metadata(Filesystem *fs, const char *link_name) {
     // Vérifier si le lien matériel existe
     Inode *link_inode = get_inode_by_name(fs, last_element(link_name));
@@ -3582,7 +4598,11 @@ int show_hard_link_metadata(Filesystem *fs, const char *link_name) {
     return 1;
 }
 
-// Fonction pour afficher l'aide
+/**
+ * @brief Affiche l'aide du système de fichiers avec la liste des commandes disponibles.
+ * 
+ * Cette fonction fournit une aide détaillée sur les différentes commandes que l'utilisateur peut utiliser dans le système de fichiers.  
+ */
 void help() {
     printf("\n=== Aide du système de fichiers ===\n\n");
     printf("Commandes de base :\n");
@@ -3688,7 +4708,15 @@ void help() {
     printf("Note : Les commandes admin nécessitent le mot de passe sudo\n");
 }
 
-// Fonction principale du shell
+/**
+ * @brief Fonction principale du shell du système de fichiers
+ * 
+ * Cette fonction implémente l'interface en ligne de commande du système de fichiers.
+ * Elle gère toutes les commandes disponibles et leur exécution.
+ * 
+ * @param fs Pointeur vers la structure du système de fichiers
+ * @param current_own Nom de l'utilisateur actuellement connecté
+ */
 void shell(Filesystem *fs, char *current_own) {
     char command[100];
     char success;  // Variable pour déterminer le succès de la commande
@@ -4358,7 +5386,17 @@ void shell(Filesystem *fs, char *current_own) {
     }
 }
 
-// Fonction pour initialiser le système de fichiers
+/**
+ * @brief Initialiser le système de fichiers et enregistrer un nouvel utilisateur ou authentifier un utilisateur existant.
+ * 
+ * Cette fonction demande le nom d'utilisateur et le mot de passe à l'utilisateur. Si l'utilisateur n'existe pas déjà, un nouveau compte est créé avec un mot de passe et un répertoire utilisateur associé.
+ * Si l'utilisateur existe, la fonction vérifie que le mot de passe fourni est correct et lui donne accès au système. 
+ * Si c'est le premier utilisateur, il est promu administrateur et super-utilisateur (root).
+ * 
+ * @param fs Pointeur vers le système de fichiers qui contient les informations des utilisateurs et des groupes.
+ * 
+ * @return Aucun. La fonction modifie directement le système de fichiers et effectue des actions d'initialisation.
+ */
 void init_main(Filesystem *fs) {
     printf("\nEntrez votre nom: ");
 
@@ -4500,7 +5538,15 @@ void init_main(Filesystem *fs) {
     }
 }
 
-// Fonction principale
+/**
+ * @brief Point d'entrée du programme.
+ *
+ * Cette fonction initialise la localisation pour gérer les caractères spéciaux, crée et initialise le système de fichiers,
+ * puis demande l'authentification ou la création d'un nouvel utilisateur via init_main.
+ * Une fois l'utilisateur identifié, elle lance le shell pour permettre l'interaction avec le système.
+ *
+ * @return int Retourne 0 en cas de succès.
+ */
 int main() {
     setlocale(LC_ALL, "en_US.UTF-8"); // Pour gérer les caractères spéciaux
     Filesystem fs;
