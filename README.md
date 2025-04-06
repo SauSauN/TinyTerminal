@@ -8,27 +8,54 @@ Bienvenue dans le système de fichiers virtuel ! Ce programme simule un shell UN
 
 ### Prérequis
 
-- Un système UNIX/Linux
-- Un compilateur C (ex: `gcc`)
-- `make` installé
+- Système d'exploitation : Un système UNIX ou compatible (Linux, macOS ou WSL sur Windows).
+- Compilateur C : gcc (ou équivalent).
+- Make : L’outil make pour automatiser la compilation.
+- Bibliothèques standard : Les bibliothèques C standards (stdio, stdlib, string, etc.).
 
 ### Installation
 
+#### Téléchargement du projet
+
+Récupérez les fichiers du projet (contenant les fichiers sources).
+
+#### Navigation dans le répertoire
+
+Ouvrez un terminal et placez-vous dans le répertoire contenant les fichiers du projet, par exemple :
+
 ```bash
-git clone <repo>
-cd <repo>
+cd /chemin/vers/le/projet
+```
+
+#### Compilation avec Make
+
+Le projet utilise un Makefile pour automatiser la compilation. Pour compiler le projet, exécutez :
+
+```bash
 make
 ```
 
-### Exécution
+Si make indique que « Nothing to be done for 'all' », cela signifie que l'exécutable est à jour.
+
+Pour forcer une recompilation, utilisez :
 
 ```bash
-./filesystem
+make -B
+```
+
+#### Nettoyage des fichiers générés
+
+Pour supprimer l'exécutable et repartir d'une base propre, utilisez :
+
+```bash
+make clean
 ```
 
 ---
 
-## 👤 Connexion Utilisateur
+## 📜 Guide d’utilisation
+
+### 👤 Connexion Utilisateur
 
 - Lors du premier lancement, entrez un **nom d'utilisateur**.  
 - Si l'utilisateur existe déjà, il sera invité à entrer son **mot de passe**.  
@@ -37,8 +64,6 @@ make
   - Les suivants sont des utilisateurs simples.
 
 ---
-
-## 📜 Commandes Disponibles
 
 ### 🔧 Commandes de base
 
