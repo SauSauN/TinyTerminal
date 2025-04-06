@@ -19,7 +19,7 @@ Bienvenue dans le système de fichiers virtuel ! Ce programme simule un shell UN
 
 Récupérez les fichiers du projet (contenant les fichiers sources).
 
-#### Navigation dans le répertoire
+#### étape 1
 
 Ouvrez un terminal et placez-vous dans le répertoire contenant les fichiers du projet, par exemple :
 
@@ -27,7 +27,7 @@ Ouvrez un terminal et placez-vous dans le répertoire contenant les fichiers du 
 cd /chemin/vers/le/projet
 ```
 
-#### Compilation avec Make
+#### étape 2
 
 Le projet utilise un Makefile pour automatiser la compilation. Pour compiler le projet, exécutez :
 
@@ -41,6 +41,14 @@ Pour forcer une recompilation, utilisez :
 
 ```bash
 make -B
+```
+
+#### étape 3
+
+Une fois installé, vous pouvez lancer le programme simplement avec :
+
+```bash
+unix_os
 ```
 
 #### Nettoyage des fichiers générés
