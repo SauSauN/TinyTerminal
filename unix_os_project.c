@@ -2817,9 +2817,6 @@ int  read_trace_by_user(Filesystem *fs, const char *current_own) {
     return 1;
 }
 
-//=============================================================================
-//=============================================================================
-
 // Fonction pour obtenir un inode par son nom
 Inode* get_inode_by_name(Filesystem *fs, const char *filename) {
     char full_path[MAX_FILENAME * 2];
@@ -2835,52 +2832,6 @@ Inode* get_inode_by_name(Filesystem *fs, const char *filename) {
     // Si le fichier n'est pas trouvé, retourner NULL
     //printf("Fichier ou répertoire '%s' introuvable.\n", filename);
     return NULL;
-}
-
-// Vérifie si un lien symbolique pointe vers un fichier spécifique
-int is_symbolic_link_for(Filesystem *fs, const char *file_base, const char *symb_link) {
-    // vérifier si le lien symbolique existe
-    Inode *inod_lien = get_inode_by_name(fs, symb_link);
-    if (inod_lien == NULL) {
-        printf("Erreur : Lien symbolique '%s' introuvable.\n", symb_link);
-        return 0;
-    }
-    // Vérifier si le fichier de base existe
-    Inode *inod_file = get_inode_by_name(fs, file_base);
-    if (inod_file == NULL) {
-        printf("Erreur : Fichier de base '%s' introuvable.\n", file_base);
-        return 0;
-    }
-
-    for (int j = 0; j < NUM_LIEN_MAX; j++) {
-        if (strcmp(inod_file->lien.symbolicLink[j].data, inod_lien->name) == 0) {
-            return 1; // Le lien symbolique pointe bien vers le fichier
-        }
-    }
-    return 0; // Lien non trouvé ou ne pointe pas vers le fichier
-}
-
-// Vérifie si un fichier est un hardlink d'un autre fichier
-int is_hard_link_for(Filesystem *fs, const char *file_base, const char *hard_link) {
-    // vérifier si le lien symbolique existe
-    Inode *inod_lien = get_inode_by_name(fs, hard_link);
-    if (inod_lien == NULL) {
-        printf("Erreur : Lien matériel '%s' introuvable.\n", hard_link);
-        return 0;
-    }
-    // Vérifier si le fichier de base existe
-    Inode *inod_file = get_inode_by_name(fs, file_base);
-    if (inod_file == NULL) {
-        printf("Erreur : Fichier de base '%s' introuvable.\n", file_base);
-        return 0;
-    }
-
-    for (int j = 0; j < NUM_LIEN_MAX; j++) {
-        if (strcmp(inod_file->lien.hardLink[j].data, inod_lien->name) == 0) {
-            return 1; // Le lien symbolique pointe bien vers le fichier
-        }
-    }
-    return 0; // Lien non trouvé ou ne pointe pas vers le fichier
 }
 
 // Fonction pour trouver le fichier de base d'un lien symbolique
@@ -2952,9 +2903,6 @@ char* get_hardlink_original(Filesystem *fs, const char *hard_link) {
     printf("Avertissement : Aucun fichier original trouvé pour le hardlink '%s'.\n", hard_link);
     return NULL;
 }
-
-//=============================================================================
-//=============================================================================
 
 // Fonction pour créer un lien symbolique
 int create_symbolic_link(Filesystem *fs, const char *file_name, const char *link_name,  const char *rep_name) {
@@ -3307,7 +3255,7 @@ int show_symbolic_link_metadata(Filesystem *fs, const char *link_name) {
     return 1;
 }
 
-// Fonction pour créer un lien matériel*****************************************************************
+// Fonction pour créer un lien matériel
 int create_hard_link(Filesystem *fs, const char *file_name, const char *link_name, const char *rep_name) {
     // Vérifier si on a atteint le nombre maximal de fichiers
     if (fs->inode_count >= MAX_FILES) {
